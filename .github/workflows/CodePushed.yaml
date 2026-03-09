@@ -12,12 +12,8 @@ permissions:
   issues: write
 
 jobs:
-  call-code-pushed:
-    name: Call Code Pushed
-    uses: ./.github/workflows/PullRequestChanged.yaml
   release:
     name: Release
-    needs: call-code-pushed
     runs-on: ubuntu-latest
     steps:
       - name: Create Releaser App Token
@@ -31,12 +27,10 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
-      - name: Setup Node
-        uses: actions/setup-node@main
+      - name: Setup Project
+        uses: ./.github/actions/SetupProject
         with:
-          node-version: 24.13.0
-      - name: Install Dependencies
-        run: npm install
+          repository-name: ${{ github.event.repository.name }}
       - name: Run Semantic Release
         run: npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/commit-analyzer -p @semantic-release/exec -p @semantic-release/git -p @semantic-release/github -p @semantic-release/release-notes-generator -p @droidsolutions-oss/semantic-release-update-file -p conventional-changelog-conventionalcommits semantic-release
         env:

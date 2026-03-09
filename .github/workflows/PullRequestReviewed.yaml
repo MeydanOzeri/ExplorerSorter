@@ -4,28 +4,86 @@ on:
   pull_request_review:
     types: [submitted]
   workflow_call:
+    inputs:
+      no-tests:
+        description: A flag indicating if there are tests to run
+        type: string
+        default: "false"
+        required: false
 
 permissions:
+  actions: read
   contents: read
   packages: read
   checks: write
   pull-requests: write
 
 jobs:
-  are-tests-valid:
-    name: Are Tests Valid
-    if: ${{ github.event.review.state == 'approved' }}
+  is-pull-request-approved:
+    name: Is Pull Request Approved
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@main
-      - name: Setup Node
-        uses: actions/setup-node@main
+      - name: Check If Pull Request Is Approved
+        uses: ./.github/actions/IsPullRequestApproved
         with:
-          node-version: 24.13.0
-      - name: Install Dependencies
-        run: npm install
-      - name: Run Coverage Tests
-        run: npm run test:coverage
+          package-token: ${{ secrets.GITHUB_TOKEN }}
+          full-repository-name: ${{ github.repository }}
+          review-state: ${{ github.event.review.state }}
+          reviewer-username: ${{ github.event.review.user.login }}
+          review-body: ${{ github.event.review.body }}
+
+  are-unit-tests-valid:
+    name: Are Unit Tests Valid
+    needs: is-pull-request-approved
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Project
+        uses: ./.github/actions/SetupProject
+        with:
+          repository-name: ${{ github.event.repository.name }}
+      - name: Run Unit Tests
+        id: run-unit-tests
+        if: ${{ inputs.no-tests == 'false' }}
+        run: npm run test:coverage -- --reporter=junit --outputFile.junit=./reports/tests.junit.xml
+      - name: Publish Unit Test Results
+        if: ${{ inputs.no-tests == 'false' && always() }}
+        uses: dorny/test-reporter@v2
+        with:
+          name: Unit Tests
+          path: "./reports/tests.junit.xml"
+          reporter: java-junit
+          fail-on-error: true
+          fail-on-empty: ${{ inputs.no-tests == 'false' }}
+      - name: Upload Code Coverage Report
+        uses: actions/upload-artifact@main
+        if: ${{ inputs.no-tests == 'false' && failure() }}
+        with:
+          name: CodeCoverageReport
+          path: "./coverage/"
+          retention-days: 3
+
+  are-mutation-tests-valid:
+    name: Are Mutation Tests Valid
+    needs: are-unit-tests-valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Project
+        uses: ./.github/actions/SetupProject
+        with:
+          repository-name: ${{ github.event.repository.name }}
       - name: Run Mutation Tests
+        if: ${{ inputs.no-tests == 'false' }}
         run: npm run test:mutation
+      - name: Upload Mutation Tests Report
+        uses: actions/upload-artifact@main
+        if: ${{ inputs.no-tests == 'false' && failure() }}
+        with:
+          name: MutationTestsReport
+          path: "./reports/mutation/"
+          retention-days: 3

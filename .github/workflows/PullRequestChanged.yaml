@@ -12,66 +12,40 @@ permissions:
   pull-requests: read
 
 jobs:
+  is-spelling-valid:
+    name: Is Spelling Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Run Spell Check
+        uses: streetsidesoftware/cspell-action@3dfff3f708988a84f16802c20979fe0556342aeb
+        with:
+          check_dot_files: true
+          incremental_files_only: false
+
   is-code-valid:
     name: Is Code Valid
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@main
-      - name: Setup Node
-        uses: actions/setup-node@main
+      - name: Setup Project
+        uses: ./.github/actions/SetupProject
         with:
-          node-version: 24.13.0
-      - name: Install Dependencies
-        run: npm install
-      - name: Run Build
-        run: npm run build
+          repository-name: ${{ github.event.repository.name }}
+      - name: Run Prettier
+        run: npx prettier . --check
       - name: Run Lint
         run: npm run lint
-
-  are-tests-valid:
-    name: Are Tests Valid
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@main
-      - name: Setup Node
-        uses: actions/setup-node@main
+      - name: Install EditorConfig Checker
+        uses: editorconfig-checker/action-editorconfig-checker@main
+      - name: Run EditorConfig Checker
+        run: editorconfig-checker
+      - name: Run LsLint
+        uses: ls-lint/action@main
         with:
-          node-version: 24.13.0
-      - name: Install Dependencies
-        run: npm install
-      - name: Run Coverage Tests
-        run: npm run test:coverage
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@main
-        if: ${{ failure() }}
-        with:
-          name: CoverageReport
-          path: coverage/
-          retention-days: 3
-
-  are-mutation-tests-valid:
-    name: Are Mutation Tests Valid
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@main
-      - name: Setup Node
-        uses: actions/setup-node@main
-        with:
-          node-version: 24.13.0
-      - name: Install Dependencies
-        run: npm install
-      - name: Run Mutation Tests
-        run: npm run test:mutation
-      - name: Upload Mutation Report
-        uses: actions/upload-artifact@main
-        if: ${{ failure() }}
-        with:
-          name: MutationReport
-          path: reports/mutation/
-          retention-days: 3
+          config: .ls-lint.yaml
 
   is-ci-valid:
     name: Is CI Valid
@@ -99,14 +73,12 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@main
+      - name: Setup Project
+        uses: ./.github/actions/SetupProject
+        with:
+          repository-name: ${{ github.event.repository.name }}
       - name: Setup Homebrew
         uses: Homebrew/actions/setup-homebrew@main
-      - name: Setup Node
-        uses: actions/setup-node@main
-        with:
-          node-version: 24.13.0
-      - name: Install Dependencies
-        run: npm install
       - name: Run Syft Create SBOM
         uses: anchore/sbom-action@main
         with:
@@ -123,6 +95,8 @@ jobs:
         with:
           path: ./
           output-format: table
+      - name: Run TruffleHog OSS
+        run: brew install trufflehog && trufflehog git file://./ --fail
       - name: Run Secretlint
         run: npx @secretlint/quick-start "**/*"
       - name: Run Gitleaks
@@ -140,13 +114,8 @@ jobs:
         uses: actions/setup-node@main
         with:
           node-version: 24.13.0
-      - name: Install Dependencies
-        run: npm install
       - name: Run Spell Check
-        uses: streetsidesoftware/cspell-action@3dfff3f708988a84f16802c20979fe0556342aeb
-        with:
-          check_dot_files: true
-          incremental_files_only: false
+        run: npm install && npx cspell . --no-progress
       - name: Run Markdownlint
         uses: DavidAnson/markdownlint-cli2-action@main
         with:
@@ -155,3 +124,5 @@ jobs:
         run: npx remark-cli .
       - name: Run Markdown Link Check
         run: find . -name \*.md -print0 | xargs -0 -n1 npx markdown-link-check -c .markdownlinkcheck.json
+      - name: Run Markdown Table Formatter
+        run: npx markdown-table-formatter --check "**/*.md"
