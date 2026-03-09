@@ -1,0 +1,31 @@
+name: Pull Request Reviewed
+
+on:
+  pull_request_review:
+    types: [submitted]
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  are-tests-valid:
+    name: Are Tests Valid
+    if: ${{ github.event.review.state == 'approved' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Node
+        uses: actions/setup-node@main
+        with:
+          node-version: 24.13.0
+      - name: Install Dependencies
+        run: npm install
+      - name: Run Coverage Tests
+        run: npm run test:coverage
+      - name: Run Mutation Tests
+        run: npm run test:mutation

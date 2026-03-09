@@ -1,0 +1,30 @@
+{
+	"accessibility.signalOptions.volume": 0,
+	"editor.formatOnSave": true,
+	"editor.autoClosingBrackets": "always",
+	"editor.bracketPairColorization.enabled": true,
+	"files.insertFinalNewline": true,
+	"explorer.compactFolders": false,
+	"xml.format.maxLineWidth": 180,
+	"yaml.format.printWidth": 180,
+	"prettier.printWidth": 180,
+	"MS-CST-E.vscode-devskim.rules.enableBestPracticeSeverityRules": true,
+	"MS-CST-E.vscode-devskim.rules.enableManualReviewSeverityRules": true,
+	"MS-CST-E.vscode-devskim.rules.enableLowConfidenceRules": true,
+	"files.associations": {
+		"*.yaml": "yaml"
+	},
+	"[yaml]": {
+		"editor.defaultFormatter": "redhat.vscode-yaml"
+	},
+	"[xml]": {
+		"editor.defaultFormatter": "redhat.vscode-xml"
+	},
+	"[json][jsonc]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[markdown]": {
+		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
+	},
+	"workbench.iconTheme": "material-icon-theme"
+}

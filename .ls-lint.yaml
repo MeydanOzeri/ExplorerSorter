@@ -1,0 +1,7 @@
+ls:
+  .dir: PascalCase | regex:([A-Z][a-zA-Z0-9]*)(\.[A-Z][a-zA-Z0-9]*)*
+  .cs: PascalCase | regex:([A-Z][a-zA-Z0-9]*)(\.[A-Z][a-zA-Z0-9]*)*
+  .csproj: PascalCase | regex:([A-Z][a-zA-Z0-9]*)(\.[A-Z][a-zA-Z0-9]*)*
+  .sln: PascalCase | regex:([A-Z][a-zA-Z0-9]*)(\.[A-Z][a-zA-Z0-9]*)*
+
+ignore: ["**/.git/**", "**/.github/**", "**/.vscode/**", "**/node_modules/**"]

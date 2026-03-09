@@ -1,0 +1,157 @@
+name: Pull Request Changed
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+
+jobs:
+  is-code-valid:
+    name: Is Code Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Node
+        uses: actions/setup-node@main
+        with:
+          node-version: 24.13.0
+      - name: Install Dependencies
+        run: npm install
+      - name: Run Build
+        run: npm run build
+      - name: Run Lint
+        run: npm run lint
+
+  are-tests-valid:
+    name: Are Tests Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Node
+        uses: actions/setup-node@main
+        with:
+          node-version: 24.13.0
+      - name: Install Dependencies
+        run: npm install
+      - name: Run Coverage Tests
+        run: npm run test:coverage
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@main
+        if: ${{ failure() }}
+        with:
+          name: CoverageReport
+          path: coverage/
+          retention-days: 3
+
+  are-mutation-tests-valid:
+    name: Are Mutation Tests Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Node
+        uses: actions/setup-node@main
+        with:
+          node-version: 24.13.0
+      - name: Install Dependencies
+        run: npm install
+      - name: Run Mutation Tests
+        run: npm run test:mutation
+      - name: Upload Mutation Report
+        uses: actions/upload-artifact@main
+        if: ${{ failure() }}
+        with:
+          name: MutationReport
+          path: reports/mutation/
+          retention-days: 3
+
+  is-ci-valid:
+    name: Is CI Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+      - name: Run Actionlint
+        run: brew install actionlint && actionlint
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ./
+          quiet: true
+      - name: Run KICS
+        uses: Checkmarx/kics-github-action@master
+        with:
+          path: ./
+
+  is-code-secure:
+    name: Is Code Secure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+      - name: Setup Node
+        uses: actions/setup-node@main
+        with:
+          node-version: 24.13.0
+      - name: Install Dependencies
+        run: npm install
+      - name: Run Syft Create SBOM
+        uses: anchore/sbom-action@main
+        with:
+          format: spdx-json
+          output-file: explorer-sorter-sbom.spdx.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Grype Check SBOM
+        uses: anchore/scan-action@main
+        with:
+          sbom: ./explorer-sorter-sbom.spdx.json
+          output-format: table
+      - name: Run Grype Scan
+        uses: anchore/scan-action@main
+        with:
+          path: ./
+          output-format: table
+      - name: Run Secretlint
+        run: npx @secretlint/quick-start "**/*"
+      - name: Run Gitleaks
+        run: brew install gitleaks && gitleaks detect --redact --verbose --no-git
+      - name: Run Trivy
+        run: brew install trivy && trivy fs --scanners vuln,misconfig,secret,license --license-full --ignored-licenses MIT --exit-code 1 ./
+
+  is-documentation-valid:
+    name: Is Documentation Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@main
+      - name: Setup Node
+        uses: actions/setup-node@main
+        with:
+          node-version: 24.13.0
+      - name: Install Dependencies
+        run: npm install
+      - name: Run Spell Check
+        uses: streetsidesoftware/cspell-action@3dfff3f708988a84f16802c20979fe0556342aeb
+        with:
+          check_dot_files: true
+          incremental_files_only: false
+      - name: Run Markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@main
+        with:
+          globs: "**/*.md"
+      - name: Run Remark
+        run: npx remark-cli .
+      - name: Run Markdown Link Check
+        run: find . -name \*.md -print0 | xargs -0 -n1 npx markdown-link-check -c .markdownlinkcheck.json
