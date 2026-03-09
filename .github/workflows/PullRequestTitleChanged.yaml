@@ -4,7 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, edited]
-  workflow_call:
 
 permissions:
   pull-requests: read
