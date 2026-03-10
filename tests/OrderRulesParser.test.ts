@@ -1,7 +1,7 @@
 import type { Uri } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const toDirectoryUri = (fsPath: string) => ({ fsPath, path: fsPath } as unknown as Uri);
+const toDirectoryUri = (fsPath: string) => ({ fsPath, path: fsPath }) as unknown as Uri;
 
 const vscodeMock = vi.hoisted(() => {
 	const joinPath = (...parts: string[]) => parts.join('/').replace(/\/+/g, '/').replace(/\/\//g, '/');

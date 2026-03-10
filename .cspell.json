@@ -43,6 +43,7 @@
 		"Trivy",
 		"tseslint",
 		"tsup",
+		"vitest",
 		"Unmock",
 		"venv"
 	],

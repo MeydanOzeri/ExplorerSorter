@@ -1,8 +1,8 @@
 import type { Uri, WorkspaceFolder } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const toUri = (fsPath: string) => ({ fsPath, path: fsPath } as unknown as Uri);
-const toWorkspaceFolder = (fsPath: string) => ({ uri: toUri(fsPath) } as unknown as WorkspaceFolder);
+const toUri = (fsPath: string) => ({ fsPath, path: fsPath }) as unknown as Uri;
+const toWorkspaceFolder = (fsPath: string) => ({ uri: toUri(fsPath) }) as unknown as WorkspaceFolder;
 
 const workspaceState = vi.hoisted(() => ({
 	directories: new Map<string, Array<[string, number]>>(),
