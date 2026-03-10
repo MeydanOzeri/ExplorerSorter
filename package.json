@@ -4,6 +4,7 @@
 	"description": "VS Code extension for custom Explorer file ordering",
 	"version": "1.0.1",
 	"publisher": "MeydanOzeri",
+	"icon": "images/icon.png",
 	"license": "MIT",
 	"repository": {
 		"type": "git",

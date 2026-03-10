@@ -39,3 +39,5 @@ ExplorerSorter sets `explorer.sortOrder` to `modified` and updates mtimes to ref
 
 - `explorerSorter.ignoredDirectories` - default directory names skipped during traversal
 - `explorerSorter.extraIgnoredDirectories` - project-specific additions to the ignore list
+
+Licensed under the MIT License.
