@@ -57,7 +57,7 @@
 						"target",
 						"__pycache__"
 					],
-					"description": "Directory names ExplorerSorter skips while traversing the workspace tree."
+					"description": "Directory names ExplorerSorter skips while traversing the workspace tree. Setting this replaces the built-in default ignore list."
 				},
 				"explorerSorter.extraIgnoredDirectories": {
 					"type": "array",
@@ -65,7 +65,7 @@
 						"type": "string"
 					},
 					"default": [],
-					"description": "Extend the default ignored directories."
+					"description": "Additional directory names to append to the built-in default ignore list without replacing it."
 				}
 			}
 		},

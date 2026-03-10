@@ -61,7 +61,7 @@ describe('OrderRulesParser', () => {
 		]);
 	});
 
-	it('preserves inherited rules before local rules', async () => {
+	it('keeps local rules before inherited parent rules', async () => {
 		// Arrange
 		const { default: OrderRulesParser } = await import('../src/OrderRulesParser.ts');
 		vscodeMock.workspace.fs.readFile.mockResolvedValue(new TextEncoder().encode('docs/**/*.md'));
@@ -72,8 +72,8 @@ describe('OrderRulesParser', () => {
 
 		// Assert
 		expect(result).toEqual([
-			{ line: 'src', lineType: 'exact' },
-			{ line: 'docs/**/*.md', lineType: 'glob' }
+			{ line: 'docs/**/*.md', lineType: 'glob' },
+			{ line: 'src', lineType: 'exact' }
 		]);
 	});
 
