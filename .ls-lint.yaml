@@ -1,5 +1,5 @@
 ls:
-    .dir: regex:([a-z][a-z0-9-]*|[A-Z][a-zA-Z0-9]*)(\.[A-Z][a-zA-Z0-9]*)*
-    .ts: regex:([a-z][a-zA-Z0-9]*|[A-Z][a-zA-Z0-9]*)(\.[a-z][a-zA-Z0-9]*)*
+  .dir: regex:([a-z][a-z0-9-]*|[A-Z][a-zA-Z0-9]*)(\.[A-Z][a-zA-Z0-9]*)*
+  .ts: regex:([a-z][a-zA-Z0-9]*|[A-Z][a-zA-Z0-9]*)(\.[a-z][a-zA-Z0-9]*)*
 
-ignore: ['**/.git/**', '**/.github/**', '**/.config/**', '**/.vscode/**', '**/node_modules/**', '**/coverage/**', '**/reports/**', '**/out/**']
+ignore: ["**/.git/**", "**/.github/**", "**/.config/**", "**/.vscode/**", "**/node_modules/**", "**/coverage/**", "**/reports/**", "**/out/**"]
