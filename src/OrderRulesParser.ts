@@ -30,7 +30,7 @@ class OrderRulesParser {
 			return parentOrderRules;
 		}
 		const orderFileLines = await this.#parseOrderFile(Uri.joinPath(currentDirectory, '.order'));
-		return [...parentOrderRules, ...orderFileLines];
+		return [...orderFileLines, ...parentOrderRules];
 	};
 }
 
