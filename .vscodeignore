@@ -18,6 +18,7 @@ stryker.conf.json
 .gitignore
 .cspell.json
 .prettierrc.json
+.prettierignore
 .editorconfig
 .markdownlint.json
 .markdownlinkcheck.json

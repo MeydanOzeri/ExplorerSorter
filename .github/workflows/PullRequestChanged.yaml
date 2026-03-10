@@ -1,111 +1,111 @@
 name: Pull Request Changed
 
 on:
-    pull_request:
-        branches: [main]
-        types: [opened, reopened, synchronize]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 permissions:
-    contents: read
-    packages: read
-    pull-requests: read
+  contents: read
+  packages: read
+  pull-requests: read
 
 jobs:
-    is-spelling-valid:
-        name: Is Spelling Valid
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-            - name: Run Spell Check
-              uses: streetsidesoftware/cspell-action@3dfff3f708988a84f16802c20979fe0556342aeb
-              with:
-                  check_dot_files: true
-                  incremental_files_only: false
+  is-spelling-valid:
+    name: Is Spelling Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - name: Run Spell Check
+        uses: streetsidesoftware/cspell-action@3dfff3f708988a84f16802c20979fe0556342aeb
+        with:
+          check_dot_files: true
+          incremental_files_only: false
 
-    is-code-valid:
-        name: Is Code Valid
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-            - name: Setup Project
-              uses: ./.github/actions/SetupProject
-              with:
-                  repository-name: ${{ github.event.repository.name }}
-            - name: Run Prettier
-              run: npx prettier . --check
-            - name: Run ESLint
-              run: npm run lint
-            - name: Install EditorConfig Checker
-              uses: editorconfig-checker/action-editorconfig-checker@1a8ea00bde2ec25afe074a2cdc15b1fd7fb60a39
-            - name: Run EditorConfig Checker
-              run: editorconfig-checker
-            - name: Run LsLint
-              uses: ls-lint/action@02e380fe8733d499cbfc9e22276de5085508a5bd
-              with:
-                  config: .ls-lint.yaml
+  is-code-valid:
+    name: Is Code Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - name: Setup Project
+        uses: ./.github/actions/SetupProject
+        with:
+          repository-name: ${{ github.event.repository.name }}
+      - name: Run Prettier
+        run: npm run format:check
+      - name: Run ESLint
+        run: npm run lint
+      - name: Install EditorConfig Checker
+        uses: editorconfig-checker/action-editorconfig-checker@1a8ea00bde2ec25afe074a2cdc15b1fd7fb60a39
+      - name: Run EditorConfig Checker
+        run: editorconfig-checker
+      - name: Run LsLint
+        uses: ls-lint/action@02e380fe8733d499cbfc9e22276de5085508a5bd
+        with:
+          config: .ls-lint.yaml
 
-    is-ci-valid:
-        name: Is CI Valid
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-            - name: Setup Homebrew
-              uses: Homebrew/actions/setup-homebrew@5b5b9415990a48a7938310ab90c4964bfcb42e89
-            - name: Run Actionlint
-              run: brew install actionlint && actionlint
-            - name: Run Checkov
-              uses: bridgecrewio/checkov-action@f9b0a2206b0401cad02ac0a66be2a7934a5be838
-              with:
-                  directory: ./
-                  quiet: true
-            - name: Run KICS
-              uses: Checkmarx/kics-github-action@05aa5eb70eede1355220f4ca5238d96b397e30a6
-              with:
-                  path: ./
+  is-ci-valid:
+    name: Is CI Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - name: Setup Homebrew
+        uses: Homebrew/actions/setup-homebrew@5b5b9415990a48a7938310ab90c4964bfcb42e89
+      - name: Run Actionlint
+        run: brew install actionlint && actionlint
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@f9b0a2206b0401cad02ac0a66be2a7934a5be838
+        with:
+          directory: ./
+          quiet: true
+      - name: Run KICS
+        uses: Checkmarx/kics-github-action@05aa5eb70eede1355220f4ca5238d96b397e30a6
+        with:
+          path: ./
 
-    is-code-secure:
-        name: Is Code Secure
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-            - name: Setup Project
-              uses: ./.github/actions/SetupProject
-              with:
-                  repository-name: ${{ github.event.repository.name }}
-            - name: Setup Homebrew
-              uses: Homebrew/actions/setup-homebrew@5b5b9415990a48a7938310ab90c4964bfcb42e89
-            - name: Run Npm Audit
-              run: npm audit --audit-level=high
-            - name: Run TruffleHog OSS
-              run: brew install trufflehog && trufflehog git file://./ --fail
-            - name: Run Secretlint
-              run: npx @secretlint/quick-start "**/*"
-            - name: Run Gitleaks
-              run: brew install gitleaks && gitleaks detect --redact --verbose --no-git
-            - name: Run Trivy
-              run: brew install trivy && trivy fs --scanners misconfig,secret,license --license-full --ignored-licenses MIT,BlueOak-1.0.0 --skip-dirs node_modules --exit-code 1 ./
+  is-code-secure:
+    name: Is Code Secure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - name: Setup Project
+        uses: ./.github/actions/SetupProject
+        with:
+          repository-name: ${{ github.event.repository.name }}
+      - name: Setup Homebrew
+        uses: Homebrew/actions/setup-homebrew@5b5b9415990a48a7938310ab90c4964bfcb42e89
+      - name: Run Npm Audit
+        run: npm audit --audit-level=high
+      - name: Run TruffleHog OSS
+        run: brew install trufflehog && trufflehog git file://./ --fail
+      - name: Run Secretlint
+        run: npx @secretlint/quick-start "**/*"
+      - name: Run Gitleaks
+        run: brew install gitleaks && gitleaks detect --redact --verbose --no-git
+      - name: Run Trivy
+        run: brew install trivy && trivy fs --scanners misconfig,secret,license --license-full --ignored-licenses MIT,BlueOak-1.0.0 --skip-dirs node_modules --exit-code 1 ./
 
-    is-documentation-valid:
-        name: Is Documentation Valid
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-            - name: Setup Node
-              uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
-              with:
-                  node-version: 24.13.0
-            - name: Run Markdownlint
-              uses: DavidAnson/markdownlint-cli2-action@0cf8cddd9e0066bdb1f84b7a75b2576f53f6854a
-              with:
-                  globs: '**/*.md'
-            - name: Run Remark
-              run: npx remark-cli .
-            - name: Run Markdown Link Check
-              run: find . -path ./.git -prune -o -path ./node_modules -prune -o -name \*.md -print0 | xargs -0 -n1 npx markdown-link-check -c .markdownlinkcheck.json
-            - name: Run Markdown Table Formatter
-              run: npx markdown-table-formatter --check "**/*.md"
+  is-documentation-valid:
+    name: Is Documentation Valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+      - name: Setup Node
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 24.13.0
+      - name: Run Markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@0cf8cddd9e0066bdb1f84b7a75b2576f53f6854a
+        with:
+          globs: "**/*.md"
+      - name: Run Remark
+        run: npx remark-cli .
+      - name: Run Markdown Link Check
+        run: find . -path ./.git -prune -o -path ./node_modules -prune -o -name \*.md -print0 | xargs -0 -n1 npx markdown-link-check -c .markdownlinkcheck.json
+      - name: Run Markdown Table Formatter
+        run: npx markdown-table-formatter --check "**/*.md"

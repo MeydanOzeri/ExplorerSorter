@@ -2,26 +2,26 @@ name: Setup Project
 description: Prepares the Node project from the github repository
 
 inputs:
-    repository-name:
-        description: The name of the repository
-        required: true
+  repository-name:
+    description: The name of the repository
+    required: true
 
 runs:
-    using: composite
-    steps:
-        - name: Setup Node
-          uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
-          with:
-              node-version: 24.13.0
-        - name: Cache Npm Packages
-          uses: actions/cache@565629816435f6c0b50676926c9b05c254113c0c
-          with:
-              path: ~/.npm
-              key: ${{ runner.os }}-${{ inputs.repository-name }}-npm-packages-${{ hashFiles('package.json') }}
-              restore-keys: ${{ runner.os }}-${{ inputs.repository-name }}-npm-packages-
-        - name: Install Npm Packages
-          run: npm install
-          shell: bash
-        - name: Build Project
-          run: npm run build
-          shell: bash
+  using: composite
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+      with:
+        node-version: 24.13.0
+    - name: Cache Npm Packages
+      uses: actions/cache@565629816435f6c0b50676926c9b05c254113c0c
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-${{ inputs.repository-name }}-npm-packages-${{ hashFiles('package.json') }}
+        restore-keys: ${{ runner.os }}-${{ inputs.repository-name }}-npm-packages-
+    - name: Install Npm Packages
+      run: npm install
+      shell: bash
+    - name: Build Project
+      run: npm run build
+      shell: bash
