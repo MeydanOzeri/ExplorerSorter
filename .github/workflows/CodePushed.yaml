@@ -32,7 +32,7 @@ jobs:
               with:
                   repository-name: ${{ github.event.repository.name }}
             - name: Run Semantic Release
-              run: npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/commit-analyzer -p @semantic-release/exec -p @semantic-release/git -p @semantic-release/github -p @semantic-release/release-notes-generator -p @droidsolutions-oss/semantic-release-update-file -p conventional-changelog-conventionalcommits semantic-release
+              run: npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/commit-analyzer -p @semantic-release/exec -p @semantic-release/git -p @semantic-release/github -p @semantic-release/release-notes-generator -p @semantic-release/npm -p @vscode/vsce -p conventional-changelog-conventionalcommits semantic-release
               env:
                   GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
