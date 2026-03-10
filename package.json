@@ -80,7 +80,7 @@
 		"vscode:prepublish": "npm run build",
 		"build": "tsc --noEmit && tsup src/extension.ts --format esm --sourcemap --out-dir out --clean --external vscode",
 		"watch": "tsup src/extension.ts --format esm --sourcemap --out-dir out --watch --clean --external vscode",
-		"format:check": "prettier . --check",
+		"format:check": "prettier \"**/*.{js,ts,json,jsonc}\" --check",
 		"lint": "eslint .",
 		"test:coverage": "vitest run --coverage",
 		"test:mutation": "stryker run",
