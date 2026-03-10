@@ -24,7 +24,7 @@
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
 	"[markdown]": {
-		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
 	"workbench.iconTheme": "material-icon-theme"
 }

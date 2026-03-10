@@ -5,10 +5,14 @@ src/**
 tests/**
 coverage/**
 reports/**
+node_modules/**
+!node_modules/minimatch/**
+!node_modules/brace-expansion/**
+!node_modules/balanced-match/**
 *.vsix
 *.log
 tsconfig.json
-eslint.config.cjs
+eslint.config.js
 vitest.config.ts
 stryker.conf.json
 .gitignore
