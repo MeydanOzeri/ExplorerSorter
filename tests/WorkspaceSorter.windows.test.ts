@@ -1,4 +1,8 @@
+import type { Uri, WorkspaceFolder } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const toUri = (fsPath: string) => ({ fsPath, path: fsPath } as unknown as Uri);
+const toWorkspaceFolder = (fsPath: string) => ({ uri: toUri(fsPath) } as unknown as WorkspaceFolder);
 
 const workspaceState = vi.hoisted(() => ({
 	directories: new Map<string, Array<[string, number]>>(),
@@ -63,18 +67,13 @@ describe('WorkspaceSorter windows paths', () => {
 		workspaceState.orderFiles.set('C:\\repo\\.order', 'src/beta.ts');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:\\repo', path: 'C:\\repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:\\repo'));
 
 		// Act
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:\\repo\\src',
-			'C:\\repo\\.order',
-			'C:\\repo\\src\\beta.ts',
-			'C:\\repo\\src\\alpha.ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:\\repo\\src', 'C:\\repo\\.order', 'C:\\repo\\src\\beta.ts', 'C:\\repo\\src\\alpha.ts']);
 	});
 
 	it('does not match glob rules against absolute windows paths', async () => {
@@ -91,16 +90,12 @@ describe('WorkspaceSorter windows paths', () => {
 		]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:\\repo', path: 'C:\\repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:\\repo'));
 
 		// Act
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:\\repo\\src',
-			'C:\\repo\\src\\beta.ts',
-			'C:\\repo\\src\\alpha.ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:\\repo\\src', 'C:\\repo\\src\\beta.ts', 'C:\\repo\\src\\alpha.ts']);
 	});
 });

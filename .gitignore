@@ -6,3 +6,4 @@ reports
 package-lock.json
 explorer-sorter-*.vsix
 .serena
+.stryker-tmp

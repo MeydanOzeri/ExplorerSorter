@@ -21,9 +21,7 @@
 					{
 						"path": ["./package.json"],
 						"type": "json",
-						"replacements": [
-							{ "key": "version", "value": "${nextRelease.version}" }
-						]
+						"replacements": [{ "key": "version", "value": "${nextRelease.version}" }]
 					}
 				]
 			}

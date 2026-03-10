@@ -1,80 +1,80 @@
 name: Pull Request Reviewed
 
 on:
-  pull_request_review:
-    types: [submitted]
+    pull_request_review:
+        types: [submitted]
 
 permissions:
-  actions: read
-  contents: read
-  packages: read
-  checks: write
-  pull-requests: write
+    actions: read
+    contents: read
+    packages: read
+    checks: write
+    pull-requests: write
 
 jobs:
-  is-pull-request-approved:
-    name: Is Pull Request Approved
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@main
-      - name: Check If Pull Request Is Approved
-        uses: ./.github/actions/IsPullRequestApproved
-        with:
-          package-token: ${{ secrets.GITHUB_TOKEN }}
-          full-repository-name: ${{ github.repository }}
-          review-state: ${{ github.event.review.state }}
-          reviewer-username: ${{ github.event.review.user.login }}
-          review-body: ${{ github.event.review.body }}
+    is-pull-request-approved:
+        name: Is Pull Request Approved
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Repository
+              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+            - name: Check If Pull Request Is Approved
+              uses: ./.github/actions/IsPullRequestApproved
+              with:
+                  package-token: ${{ secrets.GITHUB_TOKEN }}
+                  full-repository-name: ${{ github.repository }}
+                  review-state: ${{ github.event.review.state }}
+                  reviewer-username: ${{ github.event.review.user.login }}
+                  review-body: ${{ github.event.review.body }}
 
-  are-unit-tests-valid:
-    name: Are Unit Tests Valid
-    needs: is-pull-request-approved
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@main
-      - name: Setup Project
-        uses: ./.github/actions/SetupProject
-        with:
-          repository-name: ${{ github.event.repository.name }}
-      - name: Run Unit Tests
-        id: run-unit-tests
-        run: npm run test:coverage -- --reporter=junit --outputFile.junit=./reports/tests.junit.xml
-      - name: Publish Unit Test Results
-        if: ${{ always() }}
-        uses: dorny/test-reporter@v2
-        with:
-          name: Unit Tests
-          path: "./reports/tests.junit.xml"
-          reporter: java-junit
-          fail-on-error: true
-          fail-on-empty: true
-      - name: Upload Code Coverage Report
-        uses: actions/upload-artifact@main
-        if: ${{ failure() }}
-        with:
-          name: CodeCoverageReport
-          path: "./coverage/"
-          retention-days: 3
+    are-unit-tests-valid:
+        name: Are Unit Tests Valid
+        needs: is-pull-request-approved
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Repository
+              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+            - name: Setup Project
+              uses: ./.github/actions/SetupProject
+              with:
+                  repository-name: ${{ github.event.repository.name }}
+            - name: Run Unit Tests
+              id: run-unit-tests
+              run: npm run test:coverage -- --reporter=junit --outputFile.junit=./reports/tests.junit.xml
+            - name: Publish Unit Test Results
+              if: ${{ always() }}
+              uses: dorny/test-reporter@6deef76e168f93e596f7dacab951f2aabda0f543
+              with:
+                  name: Unit Tests
+                  path: './reports/tests.junit.xml'
+                  reporter: java-junit
+                  fail-on-error: true
+                  fail-on-empty: true
+            - name: Upload Code Coverage Report
+              uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+              if: ${{ failure() }}
+              with:
+                  name: CodeCoverageReport
+                  path: './coverage/'
+                  retention-days: 3
 
-  are-mutation-tests-valid:
-    name: Are Mutation Tests Valid
-    needs: are-unit-tests-valid
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@main
-      - name: Setup Project
-        uses: ./.github/actions/SetupProject
-        with:
-          repository-name: ${{ github.event.repository.name }}
-      - name: Run Mutation Tests
-        run: npm run test:mutation
-      - name: Upload Mutation Tests Report
-        uses: actions/upload-artifact@main
-        if: ${{ failure() }}
-        with:
-          name: MutationTestsReport
-          path: "./reports/mutation/"
-          retention-days: 3
+    are-mutation-tests-valid:
+        name: Are Mutation Tests Valid
+        needs: are-unit-tests-valid
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Repository
+              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+            - name: Setup Project
+              uses: ./.github/actions/SetupProject
+              with:
+                  repository-name: ${{ github.event.repository.name }}
+            - name: Run Mutation Tests
+              run: npm run test:mutation
+            - name: Upload Mutation Tests Report
+              uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+              if: ${{ failure() }}
+              with:
+                  name: MutationTestsReport
+                  path: './reports/mutation/'
+                  retention-days: 3

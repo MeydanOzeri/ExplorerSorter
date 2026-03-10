@@ -1,19 +1,19 @@
 name: Pull Request Title Changed
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, reopened, synchronize, edited]
+    pull_request:
+        branches: [main]
+        types: [opened, reopened, synchronize, edited]
 
 permissions:
-  pull-requests: read
+    pull-requests: read
 
 jobs:
-  is-pull-request-title-valid:
-    name: Is Pull Request Title Valid
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Semantic Pull Request
-        uses: amannn/action-semantic-pull-request@main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    is-pull-request-title-valid:
+        name: Is Pull Request Title Valid
+        runs-on: ubuntu-latest
+        steps:
+            - name: Run Semantic Pull Request
+              uses: amannn/action-semantic-pull-request@ac7e3fc035c47465748bbcb1a822c1583cf79bbc
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

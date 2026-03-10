@@ -1,16 +1,26 @@
+import type { ExtensionContext } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type TestWorkspaceFolder = { name: string; uri: { fsPath: string; toString: () => string } };
+type TestTextDocument = { uri: { fsPath: string } };
+type TestRenameEvent = { files: Array<{ newUri: { fsPath: string } }> };
+type TestCreateDeleteEvent = { files: Array<{ fsPath: string }> };
+type TestConfigurationEvent = { affectsConfiguration: (key: string, folder?: TestWorkspaceFolder) => boolean };
+type TestExtensionContext = { extensionMode: number; subscriptions: Array<{ dispose: () => void }> };
+
+const createContext = (extensionMode: number) => ({ extensionMode, subscriptions: [] }) as TestExtensionContext as unknown as ExtensionContext;
 
 const workspaceState = vi.hoisted(() => ({
 	workspaceFolders: [
 		{ name: 'repo-a', uri: { fsPath: 'C:/repo-a', toString: () => 'C:/repo-a' } },
 		{ name: 'repo-b', uri: { fsPath: 'C:/repo-b', toString: () => 'C:/repo-b' } }
-	] as any[] | undefined,
-	workspaceFolderByUri: new Map<string, any>(),
-	saveListener: undefined as ((document: any) => void) | undefined,
-	renameListener: undefined as ((event: any) => void) | undefined,
-	createListener: undefined as ((event: any) => void) | undefined,
-	deleteListener: undefined as ((event: any) => void) | undefined,
-	configListener: undefined as ((event: any) => void) | undefined
+	] as TestWorkspaceFolder[] | undefined,
+	workspaceFolderByUri: new Map<string, TestWorkspaceFolder | undefined>(),
+	saveListener: undefined as ((document: TestTextDocument) => void) | undefined,
+	renameListener: undefined as ((event: TestRenameEvent) => void) | undefined,
+	createListener: undefined as ((event: TestCreateDeleteEvent) => void) | undefined,
+	deleteListener: undefined as ((event: TestCreateDeleteEvent) => void) | undefined,
+	configListener: undefined as ((event: TestConfigurationEvent) => void) | undefined
 }));
 
 const outputSpies = vi.hoisted(() => ({
@@ -23,7 +33,7 @@ const timerState = vi.hoisted(() => ({
 }));
 
 const workspaceSorterSpies = vi.hoisted(() => ({
-	constructors: [] as any[],
+	constructors: [] as unknown[],
 	sort: vi.fn(async () => undefined),
 	updateSavedFileMtime: vi.fn()
 }));
@@ -32,7 +42,7 @@ vi.mock('../src/WorkspaceSorter.ts', () => {
 	class WorkspaceSorterMock {
 		static updateSavedFileMtime = workspaceSorterSpies.updateSavedFileMtime;
 
-		constructor(workspaceFolder: any) {
+		constructor(workspaceFolder: unknown) {
 			workspaceSorterSpies.constructors.push(workspaceFolder);
 		}
 
@@ -55,23 +65,23 @@ const vscodeMock = vi.hoisted(() => ({
 			return workspaceState.workspaceFolders;
 		},
 		getWorkspaceFolder: vi.fn((uri: { fsPath: string }) => workspaceState.workspaceFolderByUri.get(uri.fsPath)),
-		onDidSaveTextDocument: vi.fn((listener: (document: any) => void) => {
+		onDidSaveTextDocument: vi.fn((listener: (document: TestTextDocument) => void) => {
 			workspaceState.saveListener = listener;
 			return { dispose: vi.fn() };
 		}),
-		onDidRenameFiles: vi.fn((listener: (event: any) => void) => {
+		onDidRenameFiles: vi.fn((listener: (event: TestRenameEvent) => void) => {
 			workspaceState.renameListener = listener;
 			return { dispose: vi.fn() };
 		}),
-		onDidCreateFiles: vi.fn((listener: (event: any) => void) => {
+		onDidCreateFiles: vi.fn((listener: (event: TestCreateDeleteEvent) => void) => {
 			workspaceState.createListener = listener;
 			return { dispose: vi.fn() };
 		}),
-		onDidDeleteFiles: vi.fn((listener: (event: any) => void) => {
+		onDidDeleteFiles: vi.fn((listener: (event: TestCreateDeleteEvent) => void) => {
 			workspaceState.deleteListener = listener;
 			return { dispose: vi.fn() };
 		}),
-		onDidChangeConfiguration: vi.fn((listener: (event: any) => void) => {
+		onDidChangeConfiguration: vi.fn((listener: (event: TestConfigurationEvent) => void) => {
 			workspaceState.configListener = listener;
 			return { dispose: vi.fn() };
 		})
@@ -117,7 +127,7 @@ describe('extension', () => {
 			'setTimeout',
 			vi.fn((callback: () => void) => {
 				timerState.callbacks.push(callback);
-				return timerState.callbacks.length as any;
+				return timerState.callbacks.length as unknown as ReturnType<typeof setTimeout>;
 			})
 		);
 		vi.stubGlobal('clearTimeout', vi.fn());
@@ -129,7 +139,7 @@ describe('extension', () => {
 		const { activate } = await import('../src/extension.ts');
 
 		// Act
-		await activate({ extensionMode: vscodeMock.ExtensionMode.Development, subscriptions: [] } as any);
+		await activate(createContext(vscodeMock.ExtensionMode.Development));
 
 		// Assert
 		expect(workspaceSorterSpies.constructors).toEqual(workspaceState.workspaceFolders);
@@ -146,15 +156,17 @@ describe('extension', () => {
 	it('reacts to save, rename, create, delete and relevant config changes', async () => {
 		// Arrange
 		const { activate } = await import('../src/extension.ts');
-		await activate({ extensionMode: vscodeMock.ExtensionMode.Production, subscriptions: [] } as any);
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
 
 		// Act
 		workspaceState.saveListener?.({ uri: { fsPath: 'C:/repo-a/file.ts' } });
-		workspaceState.renameListener?.({ files: [{ newUri: { fsPath: 'C:/repo-a/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-b/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-a/renamed.ts' } }] });
+		workspaceState.renameListener?.({
+			files: [{ newUri: { fsPath: 'C:/repo-a/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-b/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-a/renamed.ts' } }]
+		});
 		workspaceState.createListener?.({ files: [{ fsPath: 'C:/repo-a/new.ts' }, { fsPath: 'C:/repo-a/new.ts' }] });
 		workspaceState.deleteListener?.({ files: [{ fsPath: 'C:/repo-a/deleted.ts' }, { fsPath: 'C:/repo-a/deleted.ts' }] });
 		workspaceState.configListener?.({
-			affectsConfiguration: vi.fn((key: string, folder: any) => key === 'explorerSorter.ignoredDirectories' && folder.name === 'repo-a')
+			affectsConfiguration: vi.fn((key: string, folder?: TestWorkspaceFolder) => key === 'explorerSorter.ignoredDirectories' && folder?.name === 'repo-a')
 		});
 
 		// Assert
@@ -173,7 +185,7 @@ describe('extension', () => {
 	it('ignores workspace events without a matching workspace folder', async () => {
 		// Arrange
 		const { activate } = await import('../src/extension.ts');
-		await activate({ extensionMode: vscodeMock.ExtensionMode.Production, subscriptions: [] } as any);
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
 
 		// Act
 		workspaceState.saveListener?.({ uri: { fsPath: 'C:/outside/file.ts' } });
@@ -190,7 +202,7 @@ describe('extension', () => {
 		const { activate } = await import('../src/extension.ts');
 
 		// Act
-		await activate({ extensionMode: vscodeMock.ExtensionMode.Production, subscriptions: [] } as any);
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
 
 		// Assert
 		expect(workspaceSorterSpies.sort).not.toHaveBeenCalled();
@@ -202,7 +214,7 @@ describe('extension', () => {
 	it('ignores configuration changes when no workspace folders exist', async () => {
 		// Arrange
 		const { activate } = await import('../src/extension.js');
-		await activate({ extensionMode: vscodeMock.ExtensionMode.Production, subscriptions: [] } as any);
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
 		workspaceState.workspaceFolders = undefined;
 
 		// Act
@@ -217,7 +229,7 @@ describe('extension', () => {
 		workspaceSorterSpies.sort.mockRejectedValueOnce('boom');
 		workspaceState.workspaceFolderByUri.set('C:/repo-a/missing.ts', undefined);
 		const { activate } = await import('../src/extension.ts');
-		await activate({ extensionMode: vscodeMock.ExtensionMode.Production, subscriptions: [] } as any);
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
 
 		// Act
 		workspaceState.renameListener?.({ files: [{ newUri: { fsPath: 'C:/repo-a/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-a/missing.ts' } }] });
@@ -239,7 +251,7 @@ describe('extension', () => {
 		workspaceSorterSpies.sort.mockRejectedValueOnce(new Error('boom'));
 		workspaceState.workspaceFolderByUri.set('C:/repo-b/file.ts', workspaceState.workspaceFolders?.[1]);
 		const { activate, deactivate } = await import('../src/extension.ts');
-		const context = { extensionMode: vscodeMock.ExtensionMode.Production, subscriptions: [] as Array<{ dispose: () => void }> } as any;
+		const context = createContext(vscodeMock.ExtensionMode.Production);
 
 		// Act
 		await activate(context);

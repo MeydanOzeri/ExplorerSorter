@@ -1,4 +1,8 @@
+import type { Uri, WorkspaceFolder } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const toUri = (fsPath: string) => ({ fsPath, path: fsPath } as unknown as Uri);
+const toWorkspaceFolder = (fsPath: string) => ({ uri: toUri(fsPath) } as unknown as WorkspaceFolder);
 
 const workspaceState = vi.hoisted(() => ({
 	directories: new Map<string, Array<[string, number]>>(),
@@ -60,7 +64,7 @@ const vscodeMock = vi.hoisted(() => {
 vi.mock('fs', () => fsSpies);
 vi.mock('vscode', () => vscodeMock);
 
-	describe('WorkspaceSorter', () => {
+describe('WorkspaceSorter', () => {
 	beforeEach(() => {
 		vi.resetModules();
 		vi.doUnmock('../src/OrderRulesParser.ts');
@@ -92,7 +96,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.orderFiles.set('C:/repo/src/.order', 'src/nested.ts');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -138,7 +142,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.extraIgnoredDirectories = ['cache'];
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -159,7 +163,7 @@ vi.mock('vscode', () => vscodeMock);
 		]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -178,7 +182,7 @@ vi.mock('vscode', () => vscodeMock);
 		]);
 		await sorter.sort();
 		fsSpies.utimesSync.mockClear();
-		WorkspaceSorter.updateSavedFileMtime({ fsPath: 'C:/repo/alpha.ts', path: 'C:/repo/alpha.ts' } as any);
+		WorkspaceSorter.updateSavedFileMtime(toUri('C:/repo/alpha.ts'));
 
 		// Assert
 		expect(fsSpies.utimesSync).toHaveBeenCalledTimes(1);
@@ -200,7 +204,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.orderFiles.set('C:/repo/.order', 'src/alpha.ts');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -225,7 +229,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.orderFiles.set('C:/repo/.order', '**/beta.ts');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -238,7 +242,8 @@ vi.mock('vscode', () => vscodeMock);
 
 	it('reapplies files when only a trailing entry stays in the same position', async () => {
 		// Arrange
-		const getOrderRules = vi.fn()
+		const getOrderRules = vi
+			.fn()
 			.mockResolvedValueOnce([])
 			.mockResolvedValueOnce([{ line: 'beta.ts', lineType: 'exact' }]);
 		vi.doMock('../src/OrderRulesParser.ts', () => ({
@@ -253,7 +258,7 @@ vi.mock('vscode', () => vscodeMock);
 		]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -263,11 +268,7 @@ vi.mock('vscode', () => vscodeMock);
 		// Assert
 		expect(getOrderRules).toHaveBeenNthCalledWith(1, [], expect.objectContaining({ fsPath: 'C:/repo' }), ['alpha.ts', 'beta.ts', 'gamma.ts']);
 		expect(getOrderRules).toHaveBeenNthCalledWith(2, [], expect.objectContaining({ fsPath: 'C:/repo' }), ['alpha.ts', 'beta.ts', 'gamma.ts']);
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:/repo/beta.ts',
-			'C:/repo/alpha.ts',
-			'C:/repo/gamma.ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/beta.ts', 'C:/repo/alpha.ts', 'C:/repo/gamma.ts']);
 	});
 
 	it('does not treat exact-only rules as glob rules', async () => {
@@ -283,16 +284,13 @@ vi.mock('vscode', () => vscodeMock);
 		]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:/repo/alpha.ts',
-			'C:/repo/beta.ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/alpha.ts', 'C:/repo/beta.ts']);
 	});
 
 	it('does not treat glob-only rules as exact rules', async () => {
@@ -309,17 +307,13 @@ vi.mock('vscode', () => vscodeMock);
 		]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:/repo/src',
-			'C:/repo/src/alpha.ts',
-			'C:/repo/src/beta[1].ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/src', 'C:/repo/src/alpha.ts', 'C:/repo/src/beta[1].ts']);
 	});
 
 	it('keeps lexical order when no rules match and applies dot globs in child folders', async () => {
@@ -340,13 +334,13 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.orderFiles.set('C:/repo/src/.order', 'src/.hidden.ts');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
 
 		// Assert
-			expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
 			'C:/repo/src',
 			'C:/repo/.order',
 			'C:/repo/alpha.ts',
@@ -366,7 +360,7 @@ vi.mock('vscode', () => vscodeMock);
 		]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -381,11 +375,7 @@ vi.mock('vscode', () => vscodeMock);
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:/repo/beta.ts',
-			'C:/repo/.order',
-			'C:/repo/alpha.ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/beta.ts', 'C:/repo/.order', 'C:/repo/alpha.ts']);
 	});
 
 	it('does not reuse file cache across sibling directories with the same file names', async () => {
@@ -404,7 +394,7 @@ vi.mock('vscode', () => vscodeMock);
 		]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -440,7 +430,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.directories.set('C:/repo/second/b', []);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -461,7 +451,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.directories.set('C:/repo', [['alpha', 1]]);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -484,7 +474,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.orderFiles.set('C:/repo/.order', 'missing');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -497,11 +487,7 @@ vi.mock('vscode', () => vscodeMock);
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:/repo/.order',
-			'C:/repo/src/beta.ts',
-			'C:/repo/src/alpha.ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/.order', 'C:/repo/src/beta.ts', 'C:/repo/src/alpha.ts']);
 	});
 
 	it('reapplies files when same-length order changes after a shared prefix', async () => {
@@ -515,7 +501,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.orderFiles.set('C:/repo/.order', 'missing');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -528,12 +514,7 @@ vi.mock('vscode', () => vscodeMock);
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:/repo/.order',
-			'C:/repo/src/gamma.ts',
-			'C:/repo/src/alpha.ts',
-			'C:/repo/src/beta.ts'
-		]);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/.order', 'C:/repo/src/gamma.ts', 'C:/repo/src/alpha.ts', 'C:/repo/src/beta.ts']);
 	});
 
 	it('does not touch missing order files for single-entry directories', async () => {
@@ -542,7 +523,7 @@ vi.mock('vscode', () => vscodeMock);
 		const toSortedSpy = vi.spyOn(Array.prototype, 'toSorted');
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -558,7 +539,7 @@ vi.mock('vscode', () => vscodeMock);
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
 
 		// Act
-		WorkspaceSorter.updateSavedFileMtime({ fsPath: 'C:/repo/missing.ts', path: 'C:/repo/missing.ts' } as any);
+		WorkspaceSorter.updateSavedFileMtime(toUri('C:/repo/missing.ts'));
 
 		// Assert
 		expect(fsSpies.utimesSync).not.toHaveBeenCalled();
@@ -569,7 +550,7 @@ vi.mock('vscode', () => vscodeMock);
 		workspaceState.directories.set('C:/repo', []);
 
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
-		const sorter = new WorkspaceSorter({ uri: { fsPath: 'C:/repo', path: 'C:/repo' } } as any);
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
 		// Act
 		await sorter.sort();
@@ -578,5 +559,4 @@ vi.mock('vscode', () => vscodeMock);
 		expect(vscodeMock.workspace.fs.readDirectory).toHaveBeenCalledWith(expect.objectContaining({ fsPath: 'C:/repo' }));
 		expect(fsSpies.utimesSync).not.toHaveBeenCalled();
 	});
-
 });

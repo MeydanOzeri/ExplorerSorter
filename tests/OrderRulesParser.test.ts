@@ -1,4 +1,7 @@
+import type { Uri } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const toDirectoryUri = (fsPath: string) => ({ fsPath, path: fsPath } as unknown as Uri);
 
 const vscodeMock = vi.hoisted(() => {
 	const joinPath = (...parts: string[]) => parts.join('/').replace(/\/+/g, '/').replace(/\/\//g, '/');
@@ -33,7 +36,7 @@ describe('OrderRulesParser', () => {
 		const parentRules = [{ line: 'src/app.ts', lineType: 'exact' as const }];
 
 		// Act
-		const result = await OrderRulesParser.getOrderRules(parentRules, { fsPath: 'C:/repo/src', path: 'C:/repo/src' } as any, ['index.ts']);
+		const result = await OrderRulesParser.getOrderRules(parentRules, toDirectoryUri('C:/repo/src'), ['index.ts']);
 
 		// Assert
 		expect(result).toBe(parentRules);
@@ -43,13 +46,10 @@ describe('OrderRulesParser', () => {
 	it('parses and appends local order rules', async () => {
 		// Arrange
 		const { default: OrderRulesParser } = await import('../src/OrderRulesParser.ts');
-		vscodeMock.workspace.fs.readFile.mockResolvedValue(
-			new TextEncoder().encode('\n# comment\n  .\\src\\app.ts  \n**/*.test.ts\nfolder///\n\n')
-		);
- 
+		vscodeMock.workspace.fs.readFile.mockResolvedValue(new TextEncoder().encode('\n# comment\n  .\\src\\app.ts  \n**/*.test.ts\nfolder///\n\n'));
 
 		// Act
-		const result = await OrderRulesParser.getOrderRules([], { fsPath: 'C:/repo', path: 'C:/repo' } as any, ['.order', 'src']);
+		const result = await OrderRulesParser.getOrderRules([], toDirectoryUri('C:/repo'), ['.order', 'src']);
 
 		// Assert
 		expect(vscodeMock.workspace.fs.readFile).toHaveBeenCalledOnce();
@@ -68,7 +68,7 @@ describe('OrderRulesParser', () => {
 		const parentRules = [{ line: 'src', lineType: 'exact' as const }];
 
 		// Act
-		const result = await OrderRulesParser.getOrderRules(parentRules, { fsPath: 'C:/repo/docs', path: 'C:/repo/docs' } as any, ['.order']);
+		const result = await OrderRulesParser.getOrderRules(parentRules, toDirectoryUri('C:/repo/docs'), ['.order']);
 
 		// Assert
 		expect(result).toEqual([
@@ -84,7 +84,7 @@ describe('OrderRulesParser', () => {
 		vscodeMock.workspace.fs.readFile.mockResolvedValue(new TextEncoder().encode('\n# one\n   \n# two\n'));
 
 		// Act
-		const result = await OrderRulesParser.getOrderRules(parentRules, { fsPath: 'C:/repo/child', path: 'C:/repo/child' } as any, ['.order']);
+		const result = await OrderRulesParser.getOrderRules(parentRules, toDirectoryUri('C:/repo/child'), ['.order']);
 
 		// Assert
 		expect(result).toEqual(parentRules);
@@ -96,7 +96,7 @@ describe('OrderRulesParser', () => {
 		vscodeMock.workspace.fs.readFile.mockResolvedValue(new TextEncoder().encode('.///leading.ts\nfolder/./kept.ts\n'));
 
 		// Act
-		const result = await OrderRulesParser.getOrderRules([], { fsPath: 'C:/repo', path: 'C:/repo' } as any, ['.order']);
+		const result = await OrderRulesParser.getOrderRules([], toDirectoryUri('C:/repo'), ['.order']);
 
 		// Assert
 		expect(result).toEqual([
