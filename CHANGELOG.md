@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.2...v1.0.3) (2026-03-10)
+
+### Bug Fixes
+
+* prioritize child order rules over parent rules ([#7](https://github.com/MeydanOzeri/ExplorerSorter/issues/7)) ([ba6d20d](https://github.com/MeydanOzeri/ExplorerSorter/commit/ba6d20dbf8699a59b86878cd780a95c64357d09c))
+
 ## [1.0.2](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.1...v1.0.2) (2026-03-10)
 
 ### Bug Fixes
