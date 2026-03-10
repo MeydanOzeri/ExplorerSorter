@@ -15,15 +15,9 @@
 			}
 		],
 		[
-			"@droidsolutions-oss/semantic-release-update-file",
+			"@semantic-release/npm",
 			{
-				"files": [
-					{
-						"path": ["./package.json"],
-						"type": "json",
-						"replacements": [{ "key": "version", "value": "${nextRelease.version}" }]
-					}
-				]
+				"npmPublish": false
 			}
 		],
 		[
