@@ -35,3 +35,4 @@ jobs:
               run: npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/commit-analyzer -p @semantic-release/exec -p @semantic-release/git -p @semantic-release/github -p @semantic-release/release-notes-generator -p @droidsolutions-oss/semantic-release-update-file -p conventional-changelog-conventionalcommits semantic-release
               env:
                   GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}

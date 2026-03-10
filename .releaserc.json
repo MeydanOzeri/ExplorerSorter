@@ -29,7 +29,9 @@
 		[
 			"@semantic-release/exec",
 			{
-				"prepareCmd": "npm run build && npx @vscode/vsce package --out explorer-sorter-${nextRelease.version}.vsix"
+				"verifyConditionsCmd": "test -n \"$VSCE_PAT\"",
+				"prepareCmd": "npm run build && npx @vscode/vsce package --out explorer-sorter-${nextRelease.version}.vsix",
+				"publishCmd": "npx @vscode/vsce publish --packagePath explorer-sorter-${nextRelease.version}.vsix --pat $VSCE_PAT"
 			}
 		],
 		[
