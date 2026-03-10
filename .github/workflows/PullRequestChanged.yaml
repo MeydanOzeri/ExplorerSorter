@@ -87,7 +87,7 @@ jobs:
             - name: Run Gitleaks
               run: brew install gitleaks && gitleaks detect --redact --verbose --no-git
             - name: Run Trivy
-              run: brew install trivy && trivy fs --scanners misconfig,secret,license --license-full --ignored-licenses MIT --skip-dirs node_modules --exit-code 1 ./
+              run: brew install trivy && trivy fs --scanners misconfig,secret,license --license-full --ignored-licenses MIT,BlueOak-1.0.0 --skip-dirs node_modules --exit-code 1 ./
 
     is-documentation-valid:
         name: Is Documentation Valid
