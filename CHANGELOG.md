@@ -1,3 +1,9 @@
+## [1.0.2](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.1...v1.0.2) (2026-03-10)
+
+### Bug Fixes
+
+* add marketplace icon and license note ([#6](https://github.com/MeydanOzeri/ExplorerSorter/issues/6)) ([c4c7548](https://github.com/MeydanOzeri/ExplorerSorter/commit/c4c7548c40e4ba8226c61e4df79ff029ef1353f7))
+
 ## [1.0.1](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.0...v1.0.1) (2026-03-10)
 
 ### Bug Fixes
