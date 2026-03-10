@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.0...v1.0.1) (2026-03-10)
+
+### Bug Fixes
+
+* broaden vscode compatibility and trim package ([#4](https://github.com/MeydanOzeri/ExplorerSorter/issues/4)) ([6abdc8d](https://github.com/MeydanOzeri/ExplorerSorter/commit/6abdc8d4e3b6a3da747d85c2f171c9af04a979b9))
+
 ## 1.0.0 (2026-03-10)
 
 ### Features
