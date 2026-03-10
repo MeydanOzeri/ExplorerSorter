@@ -1,0 +1,56 @@
+{
+	"branches": ["main"],
+	"plugins": [
+		[
+			"@semantic-release/commit-analyzer",
+			{
+				"preset": "conventionalcommits"
+			}
+		],
+		"@semantic-release/changelog",
+		[
+			"@semantic-release/release-notes-generator",
+			{
+				"preset": "conventionalcommits"
+			}
+		],
+		[
+			"@droidsolutions-oss/semantic-release-update-file",
+			{
+				"files": [
+					{
+						"path": ["./package.json"],
+						"type": "json",
+						"replacements": [{ "key": "version", "value": "${nextRelease.version}" }]
+					}
+				]
+			}
+		],
+		[
+			"@semantic-release/exec",
+			{
+				"verifyConditionsCmd": "test -n \"$VSCE_PAT\"",
+				"prepareCmd": "npm run build && npx @vscode/vsce package --out explorer-sorter-${nextRelease.version}.vsix",
+				"publishCmd": "npx @vscode/vsce publish --packagePath explorer-sorter-${nextRelease.version}.vsix --pat $VSCE_PAT"
+			}
+		],
+		[
+			"@semantic-release/github",
+			{
+				"assets": [
+					{
+						"path": "explorer-sorter-${nextRelease.version}.vsix",
+						"label": "ExplorerSorter VSIX"
+					}
+				]
+			}
+		],
+		[
+			"@semantic-release/git",
+			{
+				"assets": ["package.json", "CHANGELOG.md"],
+				"message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+			}
+		]
+	]
+}

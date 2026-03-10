@@ -1,0 +1,40 @@
+name: Is Pull Request Approved
+description: Checks if a pull request is approved, fails if not approved
+
+inputs:
+    package-token:
+        description: Github access token to be used to query the Github api
+        required: true
+    full-repository-name:
+        description: The full repository name to check the reviewer permissions against
+        required: true
+    review-state:
+        description: The pull request review state
+        required: true
+    reviewer-username:
+        description: The username of the pull request reviewer
+        required: true
+    review-body:
+        description: The body of the pull request review
+        required: true
+
+runs:
+    using: composite
+    steps:
+        - name: Is Reviewer Admin
+          if: inputs.review-state == 'commented'
+          id: is-admin
+          run: |
+              permissions=$(curl -s -H "Authorization: token ${{ inputs.package-token }}" "https://api.github.com/repos/${{ inputs.full-repository-name }}/collaborators/${{ inputs.reviewer-username }}/permission")
+              is_admin=$(echo "$permissions" | jq -r '.user.permissions.admin')
+              echo "is-admin=$is_admin" >> $GITHUB_OUTPUT
+          shell: bash
+        - name: Is Approved
+          id: is-approved
+          run: |
+              echo "is-approved=${{ inputs.review-state == 'approved' || (steps.is-admin.outputs.is-admin == 'true' && inputs.review-state == 'commented' && inputs.review-body == 'approved') }}" >> $GITHUB_OUTPUT
+          shell: bash
+        - name: Fail If Not Approved
+          if: steps.is-approved.outputs.is-approved == 'false'
+          run: exit 1
+          shell: bash

@@ -1,0 +1,102 @@
+{
+	"name": "explorer-sorter",
+	"displayName": "ExplorerSorter",
+	"description": "VS Code extension for custom Explorer file ordering",
+	"version": "1.0.0",
+	"publisher": "MeydanOzeri",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MeydanOzeri/ExplorerSorter.git"
+	},
+	"homepage": "https://github.com/MeydanOzeri/ExplorerSorter#readme",
+	"bugs": {
+		"url": "https://github.com/MeydanOzeri/ExplorerSorter/issues"
+	},
+	"type": "module",
+	"engines": {
+		"vscode": "1.110.0"
+	},
+	"keywords": [
+		"explorer",
+		"sort",
+		"ordering",
+		"workspace",
+		"vscode-extension"
+	],
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"contributes": {
+		"configuration": {
+			"title": "ExplorerSorter",
+			"properties": {
+				"explorerSorter.ignoredDirectories": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						".git",
+						".svn",
+						".hg",
+						".vs",
+						".venv",
+						"venv",
+						"node_modules",
+						"dist",
+						"build",
+						"out",
+						"bin",
+						"obj",
+						"coverage",
+						"target",
+						"__pycache__"
+					],
+					"description": "Directory names ExplorerSorter skips while traversing the workspace tree."
+				},
+				"explorerSorter.extraIgnoredDirectories": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"description": "Extend the default ignored directories."
+				}
+			}
+		},
+		"configurationDefaults": {
+			"explorer.sortOrder": "modified"
+		}
+	},
+	"main": "./out/extension.js",
+	"dependencies": {
+		"minimatch": "10.2.4"
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run build",
+		"build": "tsc --noEmit && tsup src/extension.ts --format esm --sourcemap --out-dir out --clean --external vscode",
+		"watch": "tsup src/extension.ts --format esm --sourcemap --out-dir out --watch --clean --external vscode",
+		"lint": "eslint .",
+		"test:coverage": "vitest run --coverage",
+		"test:mutation": "stryker run",
+		"package": "npx @vscode/vsce package",
+		"deps:update": "npx npm-check-updates -u && npm install"
+	},
+	"devDependencies": {
+		"@stryker-mutator/core": "9.6.0",
+		"@stryker-mutator/vitest-runner": "9.6.0",
+		"@vitest/coverage-v8": "4.0.18",
+		"@eslint/js": "10.0.1",
+		"@types/node": "25.3.5",
+		"@types/vscode": "1.109.0",
+		"eslint": "10.0.3",
+		"tsup": "8.5.0",
+		"typescript": "5.9.3",
+		"typescript-eslint": "8.56.1",
+		"vitest": "4.0.18"
+	}
+}
