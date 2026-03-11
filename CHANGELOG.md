@@ -1,3 +1,9 @@
+## [1.0.4](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.3...v1.0.4) (2026-03-11)
+
+### Bug Fixes
+
+* improve marketplace presentation ([#8](https://github.com/MeydanOzeri/ExplorerSorter/issues/8)) ([f145ed1](https://github.com/MeydanOzeri/ExplorerSorter/commit/f145ed1b4b9f4896271e259057d55034a61e2646))
+
 ## [1.0.3](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.2...v1.0.3) (2026-03-10)
 
 ### Bug Fixes
