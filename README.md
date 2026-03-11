@@ -1,16 +1,32 @@
 # ExplorerSorter
 
 Manually control file and folder order in the VS Code Explorer using a simple `.order` file.
-Override the default alphabetical sorting and organize files exactly how you want.
+
+ExplorerSorter lets you define a custom file order for your workspace or project without replacing the built-in Explorer.
+
+![ExplorerSorter demo](images/demo.gif)
+
+## Why ExplorerSorter?
+
+VS Code does not provide a built-in way to manually define the order of files and folders in the Explorer.
+
+ExplorerSorter solves that problem with a simple `.order` file.
+
+- No custom tree view
+- No extra sidebar
+- No UI replacement
+- Just the built-in Explorer in the order you want
 
 ## Features
 
-- Built-in Explorer support, no custom tree view
-- Exact workspace-relative path rules
+- Uses the built-in VS Code Explorer
+- Manual ordering with workspace-relative `.order` files
+- Exact path rules
 - Glob rules
 - Recursive `.order` inheritance
 - Folders kept before files
 - Lexical fallback for unmatched entries
+- Works well for large workspaces and monorepos
 
 ## Install
 
@@ -34,38 +50,81 @@ Then let ExplorerSorter do the rest:
 
 ## Rule Types
 
-- Exact rule: `src/index.ts`
-- Glob rule: `src/**/*.test.ts`
-- Comment: `# keep important files first`
+Exact rule
 
-Rules are always workspace-relative.
+```text
+src/index.ts
+```
+
+Glob rule
+
+```text
+src/**/*.test.ts
+```
+
+Comment
+
+```text
+# keep important files first
+```
+
+Rules are always workspace-relative.  
 Lines starting with `#` are ignored.
+
+## Example
+
+Given this `.order` file:
+
+```text
+src
+README.md
+package.json
+docs
+```
+
+ExplorerSorter prioritizes matching entries in that order while leaving unmatched files in lexical order.
+
+## How It Works
+
+ExplorerSorter does not replace the Explorer UI.
+
+Instead it:
+
+1. sets `explorer.sortOrder` to `modified`
+2. reads your `.order` files
+3. computes the desired order per directory
+4. updates file and folder modification times to reflect that order
+
+VS Code then displays the built-in Explorer using that computed order.
 
 ## How Ordering Works
 
-- Rules are evaluated per directory.
-- For a child directory, the child `.order` file is applied first, then inherited parent rules are applied after it.
-- Exact and glob matches are applied first.
-- Entries with no matching rule stay in lexical order.
-- Folders and files are sorted separately, so folders stay before files.
-- Ignored directories are skipped through `explorerSorter.ignoredDirectories` and `explorerSorter.extraIgnoredDirectories`.
+- Rules are evaluated per directory
+- For a child directory, the child `.order` file is applied first
+- Parent `.order` rules are applied after the child rules
+- Exact and glob matches are applied first
+- Entries with no matching rule stay in lexical order
+- Folders and files are sorted separately, so folders stay before files
+- Ignored directories are skipped using:
+  - `explorerSorter.ignoredDirectories`
+  - `explorerSorter.extraIgnoredDirectories`
 
 ## Example Inheritance
 
-If the workspace root `.order` has:
+If the workspace root `.order` contains:
 
 ```text
 src
 README.md
 ```
 
-and `docs/.order` has:
+and `docs/.order` contains:
 
 ```text
 guide.md
 ```
 
-then the merged order file will look like this:
+the merged rule order becomes:
 
 ```text
 guide.md
@@ -75,8 +134,21 @@ README.md
 
 ## Settings
 
-- `explorerSorter.ignoredDirectories` - replace the built-in ignored directory list completely, use when you want full control.
-- `explorerSorter.extraIgnoredDirectories` - add more ignored directories without replacing the built-in defaults, use when you only want to append a few extra directories.
+`explorerSorter.ignoredDirectories`  
+Replace the built-in ignored directory list completely.
+
+`explorerSorter.extraIgnoredDirectories`  
+Append additional ignored directories without replacing the defaults.
+
+## Use Cases
+
+ExplorerSorter is useful when you want to:
+
+- keep important files at the top of a project
+- group files by how you actually navigate them
+- make onboarding easier for teammates
+- make large workspaces easier to scan
+- keep monorepos organized
 
 ## License
 

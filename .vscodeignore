@@ -24,3 +24,4 @@ stryker.conf.json
 .releaserc.json
 .ls-lint.yaml
 .serena
+.order
