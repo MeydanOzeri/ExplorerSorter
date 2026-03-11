@@ -1,8 +1,7 @@
 # ExplorerSorter
 
-Control VS Code Explorer ordering with `.order` files while keeping the built-in Explorer view.
-
-ExplorerSorter does not add a custom file tree. Instead, it uses the built-in Explorer and updates file and folder mtimes so VS Code displays the order produced by your rules.
+Manually control file and folder order in the VS Code Explorer using a simple `.order` file.
+Override the default alphabetical sorting and organize files exactly how you want.
 
 ## Features
 

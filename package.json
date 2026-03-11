@@ -1,7 +1,7 @@
 {
 	"name": "explorer-sorter",
 	"displayName": "ExplorerSorter",
-	"description": "VS Code extension for custom Explorer file ordering",
+	"description": "Manually sort files and folders in the VS Code Explorer using .order files. Override the default alphabetical sorting and define a custom file order for your workspace or project.",
 	"version": "1.0.3",
 	"publisher": "MeydanOzeri",
 	"icon": "images/icon.png",
@@ -19,14 +19,23 @@
 		"vscode": "^1.110.0"
 	},
 	"keywords": [
-		"explorer",
-		"sort",
-		"ordering",
-		"workspace",
-		"vscode-extension"
+		"explorer sort",
+		"file order",
+		"folder order",
+		"manual sorting",
+		"custom sorting",
+		"file sorting",
+		"explorer organization",
+		"project structure",
+		"workspace organization",
+		"order files",
+		"explorer custom order",
+		"vscode explorer",
+		"file organization"
 	],
 	"categories": [
-		"Other"
+		"Other",
+		"Formatters"
 	],
 	"activationEvents": [
 		"onStartupFinished"
@@ -74,9 +83,6 @@
 		}
 	},
 	"main": "./out/extension.js",
-	"dependencies": {
-		"minimatch": "10.2.4"
-	},
 	"scripts": {
 		"vscode:prepublish": "npm run build",
 		"build": "tsc --noEmit && tsup src/extension.ts --format esm --sourcemap --out-dir out --clean --external vscode",
@@ -87,6 +93,9 @@
 		"test:mutation": "stryker run",
 		"package": "npx @vscode/vsce package",
 		"deps:update": "npx npm-check-updates -u && npm install"
+	},
+	"dependencies": {
+		"minimatch": "10.2.4"
 	},
 	"devDependencies": {
 		"@stryker-mutator/core": "9.6.0",
