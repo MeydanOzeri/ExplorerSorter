@@ -15,4 +15,7 @@ indent_size = 2
 tab_width = 2
 
 [*.md]
-trim_trailing_whitespace = false
+	indent_style = unset
+	indent_size = unset
+	tab_width = unset
+	trim_trailing_whitespace = false
