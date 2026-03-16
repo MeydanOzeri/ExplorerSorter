@@ -42,7 +42,7 @@ const activate = async (context: ExtensionContext) => {
 		workspace.onDidSaveTextDocument((textDocument) => {
 			const workspaceFolder = workspace.getWorkspaceFolder(textDocument.uri);
 			if (workspaceFolder) {
-				WorkspaceSorter.updateSavedFileMtime(textDocument.uri);
+				WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, textDocument.uri);
 				debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
 			}
 		}),
@@ -50,6 +50,9 @@ const activate = async (context: ExtensionContext) => {
 			const workspaceFolders = getUniqueWorkspaceFolders(fileRenameEvent.files.map((file) => file.newUri));
 			for (const workspaceFolder of workspaceFolders) {
 				if (workspaceFolder) {
+					for (const file of fileRenameEvent.files.filter((file) => workspace.getWorkspaceFolder(file.newUri) === workspaceFolder)) {
+						WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, file.oldUri);
+					}
 					debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
 				}
 			}
@@ -58,6 +61,9 @@ const activate = async (context: ExtensionContext) => {
 			const workspaceFolders = getUniqueWorkspaceFolders(fileCreateEvent.files);
 			for (const workspaceFolder of workspaceFolders) {
 				if (workspaceFolder) {
+					for (const file of fileCreateEvent.files.filter((file) => workspace.getWorkspaceFolder(file) === workspaceFolder)) {
+						WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, file);
+					}
 					debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
 				}
 			}
@@ -66,6 +72,9 @@ const activate = async (context: ExtensionContext) => {
 			const workspaceFolders = getUniqueWorkspaceFolders(fileDeleteEvent.files);
 			for (const workspaceFolder of workspaceFolders) {
 				if (workspaceFolder) {
+					for (const file of fileDeleteEvent.files.filter((file) => workspace.getWorkspaceFolder(file) === workspaceFolder)) {
+						WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, file);
+					}
 					debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
 				}
 			}

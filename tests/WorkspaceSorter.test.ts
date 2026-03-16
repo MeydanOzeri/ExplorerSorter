@@ -12,6 +12,7 @@ const workspaceState = vi.hoisted(() => ({
 }));
 
 const fsSpies = vi.hoisted(() => ({
+	existsSync: vi.fn(() => true),
 	utimesSync: vi.fn()
 }));
 
@@ -42,6 +43,7 @@ const vscodeMock = vi.hoisted(() => {
 			Directory: 2
 		},
 		Uri: {
+			file: vi.fn((fsPath: string) => toUri(fsPath)),
 			joinPath: vi.fn(joinPath)
 		},
 		workspace: {
@@ -182,7 +184,7 @@ describe('WorkspaceSorter', () => {
 		]);
 		await sorter.sort();
 		fsSpies.utimesSync.mockClear();
-		WorkspaceSorter.updateSavedFileMtime(toUri('C:/repo/alpha.ts'));
+		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(toWorkspaceFolder('C:/repo'), toUri('C:/repo/alpha.ts'));
 
 		// Assert
 		expect(fsSpies.utimesSync).toHaveBeenCalledTimes(1);
@@ -539,10 +541,45 @@ describe('WorkspaceSorter', () => {
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
 
 		// Act
-		WorkspaceSorter.updateSavedFileMtime(toUri('C:/repo/missing.ts'));
+		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(toWorkspaceFolder('C:/repo'), toUri('C:/repo/missing.ts'));
 
 		// Assert
 		expect(fsSpies.utimesSync).not.toHaveBeenCalled();
+	});
+
+	it('stops recursive mtime enforcement at the workspace root', async () => {
+		// Arrange
+		workspaceState.directories.set('C:/repo', [['src', 2]]);
+		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
+
+		// Act
+		await sorter.sort();
+		fsSpies.utimesSync.mockClear();
+		vscodeMock.Uri.file.mockClear();
+		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(toWorkspaceFolder('C:/repo'), toUri('C:/repo'));
+
+		// Assert
+		expect(fsSpies.utimesSync).not.toHaveBeenCalled();
+		expect(vscodeMock.Uri.file).not.toHaveBeenCalled();
+	});
+
+	it('recursively restores cached mtimes up to the workspace root', async () => {
+		// Arrange
+		workspaceState.directories.set('C:/repo', [['src', 2]]);
+		workspaceState.directories.set('C:/repo/src', [['alpha.ts', 1]]);
+		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
+
+		// Act
+		await sorter.sort();
+		fsSpies.utimesSync.mockClear();
+		vscodeMock.Uri.file.mockClear();
+		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(toWorkspaceFolder('C:/repo'), toUri('C:/repo/src/alpha.ts'));
+
+		// Assert
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/src/alpha.ts', 'C:/repo/src']);
+		expect(vscodeMock.Uri.file.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/src', 'C:/repo']);
 	});
 
 	it('does nothing for empty directories without rules', async () => {
