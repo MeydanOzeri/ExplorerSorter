@@ -10,6 +10,7 @@ const workspaceState = vi.hoisted(() => ({
 }));
 
 const fsSpies = vi.hoisted(() => ({
+	existsSync: vi.fn(() => true),
 	utimesSync: vi.fn()
 }));
 
@@ -28,6 +29,7 @@ const vscodeMock = vi.hoisted(() => {
 			Directory: 2
 		},
 		Uri: {
+			file: vi.fn((fsPath: string) => toUri(fsPath)),
 			joinPath: vi.fn(joinPath)
 		},
 		workspace: {
@@ -97,5 +99,24 @@ describe('WorkspaceSorter windows paths', () => {
 
 		// Assert
 		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:\\repo\\src', 'C:\\repo\\src\\beta.ts', 'C:\\repo\\src\\alpha.ts']);
+	});
+
+	it('restores cached mtimes up the windows path hierarchy', async () => {
+		// Arrange
+		workspaceState.directories.set('C:\\repo', [['src', 2]]);
+		workspaceState.directories.set('C:\\repo\\src', [['alpha.ts', 1]]);
+
+		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:\\repo'));
+
+		// Act
+		await sorter.sort();
+		fsSpies.utimesSync.mockClear();
+		vscodeMock.Uri.file.mockClear();
+		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(toWorkspaceFolder('C:\\repo'), toUri('C:\\repo\\src\\alpha.ts'));
+
+		// Assert
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:\\repo\\src\\alpha.ts', 'C:\\repo\\src']);
+		expect(vscodeMock.Uri.file.mock.calls.map(([filePath]) => filePath)).toEqual(['C:\\repo\\src', 'C:\\repo']);
 	});
 });

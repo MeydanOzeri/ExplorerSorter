@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type TestWorkspaceFolder = { name: string; uri: { fsPath: string; toString: () => string } };
 type TestTextDocument = { uri: { fsPath: string } };
-type TestRenameEvent = { files: Array<{ newUri: { fsPath: string } }> };
+type TestRenameEvent = { files: Array<{ oldUri: { fsPath: string }; newUri: { fsPath: string } }> };
 type TestCreateDeleteEvent = { files: Array<{ fsPath: string }> };
 type TestConfigurationEvent = { affectsConfiguration: (key: string, folder?: TestWorkspaceFolder) => boolean };
 type TestExtensionContext = { extensionMode: number; subscriptions: Array<{ dispose: () => void }> };
@@ -35,12 +35,12 @@ const timerState = vi.hoisted(() => ({
 const workspaceSorterSpies = vi.hoisted(() => ({
 	constructors: [] as unknown[],
 	sort: vi.fn(async () => undefined),
-	updateSavedFileMtime: vi.fn()
+	enforcePreviousOrderOnMtimeChange: vi.fn()
 }));
 
 vi.mock('../src/WorkspaceSorter.ts', () => {
 	class WorkspaceSorterMock {
-		static updateSavedFileMtime = workspaceSorterSpies.updateSavedFileMtime;
+		static enforcePreviousOrderOnMtimeChange = workspaceSorterSpies.enforcePreviousOrderOnMtimeChange;
 
 		constructor(workspaceFolder: unknown) {
 			workspaceSorterSpies.constructors.push(workspaceFolder);
@@ -161,7 +161,11 @@ describe('extension', () => {
 		// Act
 		workspaceState.saveListener?.({ uri: { fsPath: 'C:/repo-a/file.ts' } });
 		workspaceState.renameListener?.({
-			files: [{ newUri: { fsPath: 'C:/repo-a/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-b/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-a/renamed.ts' } }]
+			files: [
+				{ oldUri: { fsPath: 'C:/repo-a/file.ts' }, newUri: { fsPath: 'C:/repo-a/renamed.ts' } },
+				{ oldUri: { fsPath: 'C:/repo-b/file.ts' }, newUri: { fsPath: 'C:/repo-b/renamed.ts' } },
+				{ oldUri: { fsPath: 'C:/repo-a/file.ts' }, newUri: { fsPath: 'C:/repo-a/renamed.ts' } }
+			]
 		});
 		workspaceState.createListener?.({ files: [{ fsPath: 'C:/repo-a/new.ts' }, { fsPath: 'C:/repo-a/new.ts' }] });
 		workspaceState.deleteListener?.({ files: [{ fsPath: 'C:/repo-a/deleted.ts' }, { fsPath: 'C:/repo-a/deleted.ts' }] });
@@ -170,9 +174,13 @@ describe('extension', () => {
 		});
 
 		// Assert
-		expect(workspaceSorterSpies.updateSavedFileMtime).toHaveBeenCalledWith({ fsPath: 'C:/repo-a/file.ts' });
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/file.ts' });
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/file.ts' });
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[1], { fsPath: 'C:/repo-b/file.ts' });
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/new.ts' });
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/deleted.ts' });
 		expect(setTimeout).toHaveBeenCalledTimes(6);
-		expect(vscodeMock.workspace.getWorkspaceFolder).toHaveBeenCalledTimes(8);
+		expect(vscodeMock.workspace.getWorkspaceFolder).toHaveBeenCalledTimes(18);
 
 		for (const callback of timerState.callbacks) {
 			callback();
@@ -192,7 +200,7 @@ describe('extension', () => {
 		workspaceState.configListener?.({ affectsConfiguration: vi.fn(() => false) });
 
 		// Assert
-		expect(workspaceSorterSpies.updateSavedFileMtime).not.toHaveBeenCalledWith({ fsPath: 'C:/outside/file.ts' });
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).not.toHaveBeenCalledWith(expect.anything(), { fsPath: 'C:/outside/file.ts' });
 		expect(setTimeout).not.toHaveBeenCalled();
 	});
 
@@ -232,7 +240,12 @@ describe('extension', () => {
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
 
 		// Act
-		workspaceState.renameListener?.({ files: [{ newUri: { fsPath: 'C:/repo-a/renamed.ts' } }, { newUri: { fsPath: 'C:/repo-a/missing.ts' } }] });
+		workspaceState.renameListener?.({
+			files: [
+				{ oldUri: { fsPath: 'C:/repo-a/file.ts' }, newUri: { fsPath: 'C:/repo-a/renamed.ts' } },
+				{ oldUri: { fsPath: 'C:/repo-a/missing.ts' }, newUri: { fsPath: 'C:/repo-a/missing.ts' } }
+			]
+		});
 		workspaceState.createListener?.({ files: [{ fsPath: 'C:/repo-a/new.ts' }, { fsPath: 'C:/repo-a/missing.ts' }] });
 		workspaceState.deleteListener?.({ files: [{ fsPath: 'C:/repo-a/deleted.ts' }, { fsPath: 'C:/repo-a/missing.ts' }] });
 		workspaceState.configListener?.({

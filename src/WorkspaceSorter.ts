@@ -2,7 +2,7 @@ import type { OrderRule } from './types/OrderRule.ts';
 
 import { minimatch } from 'minimatch';
 import { FileType, type WorkspaceFolder, Uri, workspace } from 'vscode';
-import { utimesSync } from 'fs';
+import { existsSync, utimesSync } from 'fs';
 import OrderRulesParser from './OrderRulesParser.ts';
 
 class WorkspaceSorter {
@@ -14,30 +14,35 @@ class WorkspaceSorter {
 	#ignoredDirectories = new Set(workspace.getConfiguration('explorerSorter').get<string[]>('ignoredDirectories', []));
 	#extraIgnoredDirectories = new Set(workspace.getConfiguration('explorerSorter').get<string[]>('extraIgnoredDirectories', []));
 
-	static updateSavedFileMtime = (savedFile: Uri) => {
-		const cachedMtime = WorkspaceSorter.#cachedMtime.get(savedFile.fsPath);
-		if (cachedMtime) {
-			utimesSync(savedFile.fsPath, cachedMtime, cachedMtime);
+	static enforcePreviousOrderOnMtimeChange = (workspaceFolder: WorkspaceFolder, changedPath: Uri) => {
+		const cachedMtime = WorkspaceSorter.#cachedMtime.get(changedPath.fsPath);
+		if (cachedMtime && existsSync(changedPath.fsPath)) {
+			utimesSync(changedPath.fsPath, cachedMtime, cachedMtime);
 		}
+		if (changedPath.fsPath === workspaceFolder.uri.fsPath) {
+			return;
+		}
+		const parentPath = changedPath.fsPath.slice(0, Math.max(changedPath.fsPath.lastIndexOf('/'), changedPath.fsPath.lastIndexOf('\\')));
+		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, Uri.file(parentPath));
 	};
 
 	constructor(workspaceFolder: WorkspaceFolder) {
 		this.#workspaceFolder = workspaceFolder;
 	}
 
-	#isExactEntryMatch = (directory: Uri, entry: string, orderLine: string) => {
-		const currentEntryPath = Uri.joinPath(directory, entry).fsPath;
+	#isExactEntryMatch = (currentDirectory: Uri, entry: string, orderLine: string) => {
+		const currentEntryPath = Uri.joinPath(currentDirectory, entry).fsPath;
 		const orderLinePath = Uri.joinPath(this.#workspaceFolder.uri, ...orderLine.split('/')).fsPath;
 		return currentEntryPath === orderLinePath;
 	};
 
-	#isGlobEntryMatch = (directory: Uri, entry: string, orderLine: string) => {
-		const currentEntryPath = Uri.joinPath(directory, entry).fsPath;
+	#isGlobEntryMatch = (currentDirectory: Uri, entry: string, orderLine: string) => {
+		const currentEntryPath = Uri.joinPath(currentDirectory, entry).fsPath;
 		const workspaceRelativePath = currentEntryPath.slice(this.#workspaceFolder.uri.fsPath.length + 1).replaceAll('\\', '/');
 		return minimatch(workspaceRelativePath, orderLine, { dot: true });
 	};
 
-	#getOrderedEntries = (directory: Uri, entries: string[], orderRules: OrderRule[]) => {
+	#getOrderedEntries = (currentDirectory: Uri, entries: string[], orderRules: OrderRule[]) => {
 		if (entries.length <= 1) {
 			return entries;
 		}
@@ -45,8 +50,8 @@ class WorkspaceSorter {
 		const lexicographicallyOrderedEntries = entries.toSorted((entryA, entryB) => entryA.localeCompare(entryB));
 		for (const orderRule of orderRules) {
 			for (const entry of lexicographicallyOrderedEntries) {
-				const isExactEntryMatch = orderRule.lineType === 'exact' && this.#isExactEntryMatch(directory, entry, orderRule.line);
-				const isGlobEntryMatch = orderRule.lineType === 'glob' && this.#isGlobEntryMatch(directory, entry, orderRule.line);
+				const isExactEntryMatch = orderRule.lineType === 'exact' && this.#isExactEntryMatch(currentDirectory, entry, orderRule.line);
+				const isGlobEntryMatch = orderRule.lineType === 'glob' && this.#isGlobEntryMatch(currentDirectory, entry, orderRule.line);
 				if (isExactEntryMatch || isGlobEntryMatch) {
 					entriesWithAppliedRules.add(entry);
 				}
@@ -57,28 +62,28 @@ class WorkspaceSorter {
 
 	#areSameOrder = (orderA: string[], orderB: string[]) => orderA.length === orderB.length && orderA.every((entry, index) => entry === orderB[index]);
 
-	#applyOrderRules = (entriesType: 'directories' | 'files', directory: Uri, orderedEntries: string[], baseTime: number) => {
-		const previousOrderedEntries = WorkspaceSorter.#orderedEntries[entriesType].get(directory.fsPath);
+	#applyOrderRules = (entriesType: 'directories' | 'files', currentDirectory: Uri, orderedEntries: string[], baseTime: number) => {
+		const previousOrderedEntries = WorkspaceSorter.#orderedEntries[entriesType].get(currentDirectory.fsPath);
 		if (previousOrderedEntries && this.#areSameOrder(previousOrderedEntries, orderedEntries)) {
 			return;
 		}
 		for (let index = 0; index < orderedEntries.length; index++) {
-			const filePath = Uri.joinPath(directory, orderedEntries[index]).fsPath;
+			const filePath = Uri.joinPath(currentDirectory, orderedEntries[index]).fsPath;
 			const mtime = new Date(baseTime - index * this.#mtimeStep);
 			utimesSync(filePath, mtime, mtime);
 			WorkspaceSorter.#cachedMtime.set(filePath, mtime);
 		}
-		WorkspaceSorter.#orderedEntries[entriesType].set(directory.fsPath, orderedEntries);
+		WorkspaceSorter.#orderedEntries[entriesType].set(currentDirectory.fsPath, orderedEntries);
 	};
 
-	#sortDirectory = (directory: Uri, directoryEntries: { directories: string[]; files: string[] }, orderRules: OrderRule[]) => {
-		const orderedDirectories = this.#getOrderedEntries(directory, directoryEntries.directories, orderRules);
+	#sortDirectory = (currentDirectory: Uri, directoryEntries: { directories: string[]; files: string[] }, orderRules: OrderRule[]) => {
+		const orderedDirectories = this.#getOrderedEntries(currentDirectory, directoryEntries.directories, orderRules);
 		const directoriesBaseTime = Date.now();
-		this.#applyOrderRules('directories', directory, orderedDirectories, directoriesBaseTime);
+		this.#applyOrderRules('directories', currentDirectory, orderedDirectories, directoriesBaseTime);
 
-		const orderedFiles = this.#getOrderedEntries(directory, directoryEntries.files, orderRules);
+		const orderedFiles = this.#getOrderedEntries(currentDirectory, directoryEntries.files, orderRules);
 		const filesBaseTime = directoriesBaseTime - (directoryEntries.directories.length + 1) * this.#mtimeStep;
-		this.#applyOrderRules('files', directory, orderedFiles, filesBaseTime);
+		this.#applyOrderRules('files', currentDirectory, orderedFiles, filesBaseTime);
 	};
 
 	#getDirectoryEntries = async (currentDirectory: Uri) => {
