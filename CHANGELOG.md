@@ -1,3 +1,9 @@
+## [1.0.5](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.4...v1.0.5) (2026-03-16)
+
+### Bug Fixes
+
+* restore cached mtimes up the workspace hierarchy ([#10](https://github.com/MeydanOzeri/ExplorerSorter/issues/10)) ([d692e02](https://github.com/MeydanOzeri/ExplorerSorter/commit/d692e02007e4533c033ae6b6a95fa7cb38db65bf))
+
 ## [1.0.4](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.3...v1.0.4) (2026-03-11)
 
 ### Bug Fixes
