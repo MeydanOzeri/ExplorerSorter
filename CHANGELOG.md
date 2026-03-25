@@ -1,3 +1,9 @@
+## [1.0.6](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.5...v1.0.6) (2026-03-25)
+
+### Bug Fixes
+
+* react to external workspace changes ([#14](https://github.com/MeydanOzeri/ExplorerSorter/issues/14)) ([284bcac](https://github.com/MeydanOzeri/ExplorerSorter/commit/284bcac8da01df48c119161314843d7dd2e24664)), closes [#13](https://github.com/MeydanOzeri/ExplorerSorter/issues/13)
+
 ## [1.0.5](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.4...v1.0.5) (2026-03-16)
 
 ### Bug Fixes
