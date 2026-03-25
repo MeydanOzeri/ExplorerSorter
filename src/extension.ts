@@ -1,7 +1,20 @@
-import { type ExtensionContext, type Uri, type WorkspaceFolder, OutputChannel, workspace, window, Disposable, ExtensionMode } from 'vscode';
+import { type ExtensionContext, type WorkspaceFolder, type FileSystemWatcher, Uri, OutputChannel, workspace, window, Disposable, ExtensionMode, RelativePattern } from 'vscode';
 import WorkspaceSorter from './WorkspaceSorter.ts';
+import path from 'path';
 
-const EVENT_DEBOUNCE_MS = 250;
+const isIgnoredPath = (workspaceFolder: WorkspaceFolder, changedPath: Uri) => {
+	if (changedPath.fsPath === workspaceFolder.uri.fsPath) {
+		return false;
+	}
+	const ignoredDirectories = new Set([
+		...workspace.getConfiguration('explorerSorter', workspaceFolder).get<string[]>('ignoredDirectories', []),
+		...workspace.getConfiguration('explorerSorter', workspaceFolder).get<string[]>('extraIgnoredDirectories', [])
+	]);
+	if (ignoredDirectories.has(path.basename(changedPath.fsPath))) {
+		return true;
+	}
+	return isIgnoredPath(workspaceFolder, Uri.file(path.dirname(changedPath.fsPath)));
+};
 
 const sortWorkspace = async (outputChannel: OutputChannel, workspaceFolder: WorkspaceFolder) => {
 	try {
@@ -16,20 +29,39 @@ const sortWorkspace = async (outputChannel: OutputChannel, workspaceFolder: Work
 	}
 };
 
-const getUniqueWorkspaceFolders = (files: readonly Uri[]) =>
-	files.map((file) => workspace.getWorkspaceFolder(file)).filter((workspaceFolder, index, self) => index === self.indexOf(workspaceFolder));
-
-const debounceSortWorkspace = (debounceTimers: Map<string, NodeJS.Timeout>, outputChannel: OutputChannel, workspaceFolder: WorkspaceFolder) => {
-	const workspaceKey = workspaceFolder.uri.toString();
-	clearTimeout(debounceTimers.get(workspaceKey));
-	debounceTimers.set(
-		workspaceKey,
-		setTimeout(() => void sortWorkspace(outputChannel, workspaceFolder), EVENT_DEBOUNCE_MS) // DevSkim: ignore DS172411
-	);
+const triggerWorkspaceSort = async (
+	runningWorkspaceSorts: Set<string>,
+	queuedWorkspaceSorts: Map<string, Uri | undefined>,
+	outputChannel: OutputChannel,
+	workspaceFolder: WorkspaceFolder,
+	changedPath?: Uri
+) => {
+	if (changedPath && (isIgnoredPath(workspaceFolder, changedPath) || WorkspaceSorter.isSelfTriggeredMtimeChange(changedPath))) {
+		return;
+	}
+	if (runningWorkspaceSorts.has(workspaceFolder.uri.fsPath)) {
+		queuedWorkspaceSorts.set(workspaceFolder.uri.fsPath, changedPath ?? undefined);
+		return;
+	}
+	try {
+		runningWorkspaceSorts.add(workspaceFolder.uri.fsPath);
+		if (changedPath) {
+			WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, changedPath);
+		}
+		await sortWorkspace(outputChannel, workspaceFolder);
+	} finally {
+		runningWorkspaceSorts.delete(workspaceFolder.uri.fsPath);
+		const queuedChangedPath = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath);
+		if (queuedWorkspaceSorts.delete(workspaceFolder.uri.fsPath)) {
+			await triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, queuedChangedPath);
+		}
+	}
 };
 
 const activate = async (context: ExtensionContext) => {
-	const debounceTimers = new Map<string, NodeJS.Timeout>();
+	const runningWorkspaceSorts = new Set<string>();
+	const queuedWorkspaceSorts = new Map<string, Uri | undefined>();
+	const workspaceWatchers: FileSystemWatcher[] = [];
 	const outputChannel = window.createOutputChannel('ExplorerSorter');
 	if (context.extensionMode === ExtensionMode.Development) {
 		outputChannel.show();
@@ -37,62 +69,26 @@ const activate = async (context: ExtensionContext) => {
 	outputChannel.appendLine('Extension "ExplorerSorter" is now active!');
 	for (const workspaceFolder of workspace.workspaceFolders ?? []) {
 		await sortWorkspace(outputChannel, workspaceFolder);
+		const workspaceWatcher = workspace.createFileSystemWatcher(new RelativePattern(workspaceFolder, '**'));
+		workspaceWatcher.onDidChange((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
+		workspaceWatcher.onDidCreate((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
+		workspaceWatcher.onDidDelete((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
+		workspaceWatchers.push(workspaceWatcher);
 	}
 	context.subscriptions.push(
-		workspace.onDidSaveTextDocument((textDocument) => {
-			const workspaceFolder = workspace.getWorkspaceFolder(textDocument.uri);
-			if (workspaceFolder) {
-				WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, textDocument.uri);
-				debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
-			}
-		}),
-		workspace.onDidRenameFiles((fileRenameEvent) => {
-			const workspaceFolders = getUniqueWorkspaceFolders(fileRenameEvent.files.map((file) => file.newUri));
-			for (const workspaceFolder of workspaceFolders) {
-				if (workspaceFolder) {
-					for (const file of fileRenameEvent.files.filter((file) => workspace.getWorkspaceFolder(file.newUri) === workspaceFolder)) {
-						WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, file.oldUri);
-					}
-					debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
-				}
-			}
-		}),
-		workspace.onDidCreateFiles((fileCreateEvent) => {
-			const workspaceFolders = getUniqueWorkspaceFolders(fileCreateEvent.files);
-			for (const workspaceFolder of workspaceFolders) {
-				if (workspaceFolder) {
-					for (const file of fileCreateEvent.files.filter((file) => workspace.getWorkspaceFolder(file) === workspaceFolder)) {
-						WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, file);
-					}
-					debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
-				}
-			}
-		}),
-		workspace.onDidDeleteFiles((fileDeleteEvent) => {
-			const workspaceFolders = getUniqueWorkspaceFolders(fileDeleteEvent.files);
-			for (const workspaceFolder of workspaceFolders) {
-				if (workspaceFolder) {
-					for (const file of fileDeleteEvent.files.filter((file) => workspace.getWorkspaceFolder(file) === workspaceFolder)) {
-						WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, file);
-					}
-					debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
-				}
-			}
-		}),
 		workspace.onDidChangeConfiguration((configurationChangeEvent) => {
 			for (const workspaceFolder of workspace.workspaceFolders ?? []) {
 				const isIgnoredDirectoriesAffected = configurationChangeEvent.affectsConfiguration('explorerSorter.ignoredDirectories', workspaceFolder);
 				const isExtraIgnoredDirectoriesAffected = configurationChangeEvent.affectsConfiguration('explorerSorter.extraIgnoredDirectories', workspaceFolder);
 				if (isIgnoredDirectoriesAffected || isExtraIgnoredDirectoriesAffected) {
-					debounceSortWorkspace(debounceTimers, outputChannel, workspaceFolder);
+					void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder);
 				}
 			}
 		}),
+		...workspaceWatchers,
 		new Disposable(() => {
-			for (const timer of debounceTimers.values()) {
-				clearTimeout(timer);
-			}
-			debounceTimers.clear();
+			runningWorkspaceSorts.clear();
+			queuedWorkspaceSorts.clear();
 		})
 	);
 };

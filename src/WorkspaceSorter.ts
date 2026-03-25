@@ -2,17 +2,28 @@ import type { OrderRule } from './types/OrderRule.ts';
 
 import { minimatch } from 'minimatch';
 import { FileType, type WorkspaceFolder, Uri, workspace } from 'vscode';
-import { existsSync, utimesSync } from 'fs';
+import { existsSync, utimesSync, statSync } from 'fs';
 import OrderRulesParser from './OrderRulesParser.ts';
+
+const MTIME_STEP = 1100; // Use >1s steps for reliable directory mtime ordering on coarse filesystems
 
 class WorkspaceSorter {
 	static #cachedMtime = new Map<string, Date>();
 	static #orderedEntries = { directories: new Map<string, string[]>(), files: new Map<string, string[]>() };
 
-	#mtimeStep = 1100; // Use >1s steps for reliable directory mtime ordering on coarse filesystems
 	#workspaceFolder: WorkspaceFolder;
-	#ignoredDirectories = new Set(workspace.getConfiguration('explorerSorter').get<string[]>('ignoredDirectories', []));
-	#extraIgnoredDirectories = new Set(workspace.getConfiguration('explorerSorter').get<string[]>('extraIgnoredDirectories', []));
+	#ignoredDirectories = new Set([
+		...workspace.getConfiguration('explorerSorter').get<string[]>('ignoredDirectories', []),
+		...workspace.getConfiguration('explorerSorter').get<string[]>('extraIgnoredDirectories', [])
+	]);
+
+	static isSelfTriggeredMtimeChange = (uri: Uri) => {
+		const cachedMtime = WorkspaceSorter.#cachedMtime.get(uri.fsPath);
+		if (!cachedMtime || !existsSync(uri.fsPath)) {
+			return false;
+		}
+		return statSync(uri.fsPath).mtime.getTime() === cachedMtime.getTime();
+	};
 
 	static enforcePreviousOrderOnMtimeChange = (workspaceFolder: WorkspaceFolder, changedPath: Uri) => {
 		const cachedMtime = WorkspaceSorter.#cachedMtime.get(changedPath.fsPath);
@@ -69,7 +80,7 @@ class WorkspaceSorter {
 		}
 		for (let index = 0; index < orderedEntries.length; index++) {
 			const filePath = Uri.joinPath(currentDirectory, orderedEntries[index]).fsPath;
-			const mtime = new Date(baseTime - index * this.#mtimeStep);
+			const mtime = new Date(baseTime - index * MTIME_STEP);
 			utimesSync(filePath, mtime, mtime);
 			WorkspaceSorter.#cachedMtime.set(filePath, mtime);
 		}
@@ -82,7 +93,7 @@ class WorkspaceSorter {
 		this.#applyOrderRules('directories', currentDirectory, orderedDirectories, directoriesBaseTime);
 
 		const orderedFiles = this.#getOrderedEntries(currentDirectory, directoryEntries.files, orderRules);
-		const filesBaseTime = directoriesBaseTime - (directoryEntries.directories.length + 1) * this.#mtimeStep;
+		const filesBaseTime = directoriesBaseTime - (directoryEntries.directories.length + 1) * MTIME_STEP;
 		this.#applyOrderRules('files', currentDirectory, orderedFiles, filesBaseTime);
 	};
 
@@ -102,10 +113,8 @@ class WorkspaceSorter {
 		const { directories, files } = await this.#getDirectoryEntries(currentDirectory);
 		const orderRules = await OrderRulesParser.getOrderRules(parentOrderRules, currentDirectory, files);
 		this.#sortDirectory(currentDirectory, { directories, files }, orderRules);
-		for (const directoryEntry of directories) {
-			if (!this.#ignoredDirectories.has(directoryEntry) && !this.#extraIgnoredDirectories.has(directoryEntry)) {
-				await this.sort(Uri.joinPath(currentDirectory, directoryEntry), orderRules);
-			}
+		for (const directoryEntry of directories.filter((directoryEntry) => !this.#ignoredDirectories.has(directoryEntry))) {
+			await this.sort(Uri.joinPath(currentDirectory, directoryEntry), orderRules);
 		}
 	};
 }

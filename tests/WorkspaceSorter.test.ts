@@ -13,6 +13,7 @@ const workspaceState = vi.hoisted(() => ({
 
 const fsSpies = vi.hoisted(() => ({
 	existsSync: vi.fn(() => true),
+	statSync: vi.fn(() => ({ mtime: new Date(0) })),
 	utimesSync: vi.fn()
 }));
 
@@ -189,6 +190,30 @@ describe('WorkspaceSorter', () => {
 		// Assert
 		expect(fsSpies.utimesSync).toHaveBeenCalledTimes(1);
 		expect(fsSpies.utimesSync).toHaveBeenLastCalledWith('C:/repo/alpha.ts', expect.any(Date), expect.any(Date));
+	});
+
+	it('detects self-triggered mtime changes when cached mtime matches disk mtime', async () => {
+		workspaceState.directories.set('C:/repo', [
+			['alpha.ts', 1],
+			['beta.ts', 1]
+		]);
+		vi.spyOn(Date, 'now').mockReturnValue(10_000);
+		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
+		await sorter.sort();
+		fsSpies.statSync.mockReturnValueOnce({ mtime: new Date(8_900) });
+		expect(WorkspaceSorter.isSelfTriggeredMtimeChange(toUri('C:/repo/alpha.ts'))).toBe(true);
+		expect(fsSpies.statSync).toHaveBeenCalledWith('C:/repo/alpha.ts');
+	});
+
+	it('ignores self-trigger checks when no cached mtime exists or the file is missing', async () => {
+		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
+		expect(WorkspaceSorter.isSelfTriggeredMtimeChange(toUri('C:/repo/uncached.ts'))).toBe(false);
+		expect(fsSpies.existsSync).not.toHaveBeenCalled();
+		expect(fsSpies.statSync).not.toHaveBeenCalled();
+		fsSpies.existsSync.mockReturnValueOnce(false);
+		expect(WorkspaceSorter.isSelfTriggeredMtimeChange(toUri('C:/repo/missing.ts'))).toBe(false);
+		expect(fsSpies.statSync).not.toHaveBeenCalled();
 	});
 
 	it('applies exact rules using workspace-relative paths only', async () => {
@@ -567,7 +592,10 @@ describe('WorkspaceSorter', () => {
 	it('recursively restores cached mtimes up to the workspace root', async () => {
 		// Arrange
 		workspaceState.directories.set('C:/repo', [['src', 2]]);
-		workspaceState.directories.set('C:/repo/src', [['alpha.ts', 1]]);
+		workspaceState.directories.set('C:/repo/src', [
+			['alpha.ts', 1],
+			['beta.ts', 1]
+		]);
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
 		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 
@@ -578,7 +606,7 @@ describe('WorkspaceSorter', () => {
 		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(toWorkspaceFolder('C:/repo'), toUri('C:/repo/src/alpha.ts'));
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/src/alpha.ts', 'C:/repo/src']);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/src']);
 		expect(vscodeMock.Uri.file.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/src', 'C:/repo']);
 	});
 
