@@ -1,26 +1,43 @@
 import type { ExtensionContext } from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-type TestWorkspaceFolder = { name: string; uri: { fsPath: string; toString: () => string } };
-type TestTextDocument = { uri: { fsPath: string } };
-type TestRenameEvent = { files: Array<{ oldUri: { fsPath: string }; newUri: { fsPath: string } }> };
-type TestCreateDeleteEvent = { files: Array<{ fsPath: string }> };
+type TestUri = { fsPath: string; toString: () => string };
+type TestWorkspaceFolder = { name: string; uri: TestUri };
 type TestConfigurationEvent = { affectsConfiguration: (key: string, folder?: TestWorkspaceFolder) => boolean };
 type TestExtensionContext = { extensionMode: number; subscriptions: Array<{ dispose: () => void }> };
+type TestWatcherRegistration = {
+	baseFolder: TestWorkspaceFolder;
+	pattern: string;
+	changeListener: ((uri: TestUri) => void) | undefined;
+	createListener: ((uri: TestUri) => void) | undefined;
+	deleteListener: ((uri: TestUri) => void) | undefined;
+};
+type TestConfigurationRequest = {
+	section: string;
+	folder: TestWorkspaceFolder | undefined;
+	key: string;
+	defaultValue: string[];
+};
 
+const createUri = (fsPath: string): TestUri => ({ fsPath, toString: () => fsPath });
+const createWorkspaceFolder = (name: string, fsPath: string): TestWorkspaceFolder => ({ name, uri: createUri(fsPath) });
 const createContext = (extensionMode: number) => ({ extensionMode, subscriptions: [] }) as TestExtensionContext as unknown as ExtensionContext;
+const flushPromises = async (times = 4) => {
+	for (let index = 0; index < times; index++) {
+		await Promise.resolve();
+	}
+};
 
 const workspaceState = vi.hoisted(() => ({
 	workspaceFolders: [
 		{ name: 'repo-a', uri: { fsPath: 'C:/repo-a', toString: () => 'C:/repo-a' } },
 		{ name: 'repo-b', uri: { fsPath: 'C:/repo-b', toString: () => 'C:/repo-b' } }
 	] as TestWorkspaceFolder[] | undefined,
-	workspaceFolderByUri: new Map<string, TestWorkspaceFolder | undefined>(),
-	saveListener: undefined as ((document: TestTextDocument) => void) | undefined,
-	renameListener: undefined as ((event: TestRenameEvent) => void) | undefined,
-	createListener: undefined as ((event: TestCreateDeleteEvent) => void) | undefined,
-	deleteListener: undefined as ((event: TestCreateDeleteEvent) => void) | undefined,
-	configListener: undefined as ((event: TestConfigurationEvent) => void) | undefined
+	watcherRegistrations: [] as TestWatcherRegistration[],
+	configListener: undefined as ((event: TestConfigurationEvent) => void) | undefined,
+	ignoredDirectories: [] as string[],
+	extraIgnoredDirectories: [] as string[],
+	configurationRequests: [] as TestConfigurationRequest[]
 }));
 
 const outputSpies = vi.hoisted(() => ({
@@ -28,27 +45,22 @@ const outputSpies = vi.hoisted(() => ({
 	show: vi.fn()
 }));
 
-const timerState = vi.hoisted(() => ({
-	callbacks: [] as Array<() => void>
-}));
-
 const workspaceSorterSpies = vi.hoisted(() => ({
 	constructors: [] as unknown[],
 	sort: vi.fn(async () => undefined),
-	enforcePreviousOrderOnMtimeChange: vi.fn()
+	enforcePreviousOrderOnMtimeChange: vi.fn(),
+	isSelfTriggeredMtimeChange: vi.fn<(uri: TestUri) => boolean>(() => false)
 }));
 
 vi.mock('../src/WorkspaceSorter.ts', () => {
 	class WorkspaceSorterMock {
 		static enforcePreviousOrderOnMtimeChange = workspaceSorterSpies.enforcePreviousOrderOnMtimeChange;
-
+		static isSelfTriggeredMtimeChange = workspaceSorterSpies.isSelfTriggeredMtimeChange;
 		constructor(workspaceFolder: unknown) {
 			workspaceSorterSpies.constructors.push(workspaceFolder);
 		}
-
 		sort = workspaceSorterSpies.sort;
 	}
-
 	return { default: WorkspaceSorterMock };
 });
 
@@ -57,6 +69,17 @@ const vscodeMock = vi.hoisted(() => ({
 		Development: 1,
 		Production: 2
 	},
+	Uri: {
+		file: vi.fn((fsPath: string) => createUri(fsPath))
+	},
+	RelativePattern: class {
+		baseFolder: TestWorkspaceFolder;
+		pattern: string;
+		constructor(baseFolder: TestWorkspaceFolder, pattern: string) {
+			this.baseFolder = baseFolder;
+			this.pattern = pattern;
+		}
+	},
 	window: {
 		createOutputChannel: vi.fn(() => outputSpies)
 	},
@@ -64,22 +87,45 @@ const vscodeMock = vi.hoisted(() => ({
 		get workspaceFolders() {
 			return workspaceState.workspaceFolders;
 		},
-		getWorkspaceFolder: vi.fn((uri: { fsPath: string }) => workspaceState.workspaceFolderByUri.get(uri.fsPath)),
-		onDidSaveTextDocument: vi.fn((listener: (document: TestTextDocument) => void) => {
-			workspaceState.saveListener = listener;
-			return { dispose: vi.fn() };
-		}),
-		onDidRenameFiles: vi.fn((listener: (event: TestRenameEvent) => void) => {
-			workspaceState.renameListener = listener;
-			return { dispose: vi.fn() };
-		}),
-		onDidCreateFiles: vi.fn((listener: (event: TestCreateDeleteEvent) => void) => {
-			workspaceState.createListener = listener;
-			return { dispose: vi.fn() };
-		}),
-		onDidDeleteFiles: vi.fn((listener: (event: TestCreateDeleteEvent) => void) => {
-			workspaceState.deleteListener = listener;
-			return { dispose: vi.fn() };
+		getConfiguration: vi.fn((section: string, folder?: TestWorkspaceFolder) => ({
+			get: vi.fn((key: string, defaultValue: string[]) => {
+				workspaceState.configurationRequests.push({ section, folder, key, defaultValue });
+				if (section !== 'explorerSorter') {
+					return ['__invalid__'];
+				}
+				if (key === 'ignoredDirectories') {
+					return workspaceState.ignoredDirectories;
+				}
+				if (key === 'extraIgnoredDirectories') {
+					return workspaceState.extraIgnoredDirectories;
+				}
+				return defaultValue;
+			})
+		})),
+		createFileSystemWatcher: vi.fn((relativePattern: { baseFolder: TestWorkspaceFolder; pattern: string }) => {
+			const watcherRegistration: TestWatcherRegistration = {
+				baseFolder: relativePattern.baseFolder,
+				pattern: relativePattern.pattern,
+				changeListener: undefined,
+				createListener: undefined,
+				deleteListener: undefined
+			};
+			workspaceState.watcherRegistrations.push(watcherRegistration);
+			return {
+				onDidChange: vi.fn((listener: (uri: TestUri) => void) => {
+					watcherRegistration.changeListener = listener;
+					return { dispose: vi.fn() };
+				}),
+				onDidCreate: vi.fn((listener: (uri: TestUri) => void) => {
+					watcherRegistration.createListener = listener;
+					return { dispose: vi.fn() };
+				}),
+				onDidDelete: vi.fn((listener: (uri: TestUri) => void) => {
+					watcherRegistration.deleteListener = listener;
+					return { dispose: vi.fn() };
+				}),
+				dispose: vi.fn()
+			};
 		}),
 		onDidChangeConfiguration: vi.fn((listener: (event: TestConfigurationEvent) => void) => {
 			workspaceState.configListener = listener;
@@ -103,48 +149,34 @@ describe('extension', () => {
 	beforeEach(() => {
 		vi.resetModules();
 		vi.clearAllMocks();
-		vi.restoreAllMocks();
-		workspaceState.workspaceFolders = [
-			{ name: 'repo-a', uri: { fsPath: 'C:/repo-a', toString: () => 'C:/repo-a' } },
-			{ name: 'repo-b', uri: { fsPath: 'C:/repo-b', toString: () => 'C:/repo-b' } }
-		];
-		workspaceSorterSpies.constructors.length = 0;
-		workspaceState.workspaceFolderByUri = new Map([
-			['C:/repo-a/file.ts', workspaceState.workspaceFolders[0]],
-			['C:/repo-b/file.ts', workspaceState.workspaceFolders[1]],
-			['C:/repo-a/new.ts', workspaceState.workspaceFolders[0]],
-			['C:/repo-a/renamed.ts', workspaceState.workspaceFolders[0]],
-			['C:/repo-b/renamed.ts', workspaceState.workspaceFolders[1]],
-			['C:/repo-a/deleted.ts', workspaceState.workspaceFolders[0]]
-		]);
-		workspaceState.saveListener = undefined;
-		workspaceState.renameListener = undefined;
-		workspaceState.createListener = undefined;
-		workspaceState.deleteListener = undefined;
+		workspaceState.workspaceFolders = [createWorkspaceFolder('repo-a', 'C:/repo-a'), createWorkspaceFolder('repo-b', 'C:/repo-b')];
+		workspaceState.watcherRegistrations = [];
 		workspaceState.configListener = undefined;
-		timerState.callbacks = [];
-		vi.stubGlobal(
-			'setTimeout',
-			vi.fn((callback: () => void) => {
-				timerState.callbacks.push(callback);
-				return timerState.callbacks.length as unknown as ReturnType<typeof setTimeout>;
-			})
-		);
-		vi.stubGlobal('clearTimeout', vi.fn());
+		workspaceState.ignoredDirectories = [];
+		workspaceState.extraIgnoredDirectories = [];
+		workspaceState.configurationRequests = [];
+		workspaceSorterSpies.constructors.length = 0;
+		workspaceSorterSpies.sort.mockReset();
+		workspaceSorterSpies.sort.mockResolvedValue(undefined);
+		workspaceSorterSpies.enforcePreviousOrderOnMtimeChange.mockReset();
+		workspaceSorterSpies.isSelfTriggeredMtimeChange.mockReset();
+		workspaceSorterSpies.isSelfTriggeredMtimeChange.mockReturnValue(false);
 	});
 
 	it('sorts all workspaces on activation and shows output in development', async () => {
-		// Arrange
 		vi.spyOn(Date, 'now').mockReturnValueOnce(100).mockReturnValueOnce(105).mockReturnValueOnce(200).mockReturnValueOnce(208);
+		const context = createContext(vscodeMock.ExtensionMode.Development);
 		const { activate } = await import('../src/extension.ts');
-
-		// Act
-		await activate(createContext(vscodeMock.ExtensionMode.Development));
-
-		// Assert
+		await activate(context);
 		expect(workspaceSorterSpies.constructors).toEqual(workspaceState.workspaceFolders);
 		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(2);
 		expect(vscodeMock.window.createOutputChannel).toHaveBeenCalledWith('ExplorerSorter');
+		expect(vscodeMock.workspace.createFileSystemWatcher).toHaveBeenCalledTimes(2);
+		expect(workspaceState.watcherRegistrations).toEqual([
+			expect.objectContaining({ baseFolder: workspaceState.workspaceFolders?.[0], pattern: '**' }),
+			expect.objectContaining({ baseFolder: workspaceState.workspaceFolders?.[1], pattern: '**' })
+		]);
+		expect(context.subscriptions).toHaveLength(4);
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('Extension "ExplorerSorter" is now active!');
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('Sorting workspace repo-a on path: C:/repo-a');
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('Sorting workspace repo-b on path: C:/repo-b');
@@ -153,66 +185,102 @@ describe('extension', () => {
 		expect(outputSpies.show).toHaveBeenCalledOnce();
 	});
 
-	it('reacts to save, rename, create, delete and relevant config changes', async () => {
-		// Arrange
+	it('re-runs the latest queued watcher change after the current sort finishes', async () => {
+		let resolveSort: (() => void) | undefined;
 		const { activate } = await import('../src/extension.ts');
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
-
-		// Act
-		workspaceState.saveListener?.({ uri: { fsPath: 'C:/repo-a/file.ts' } });
-		workspaceState.renameListener?.({
-			files: [
-				{ oldUri: { fsPath: 'C:/repo-a/file.ts' }, newUri: { fsPath: 'C:/repo-a/renamed.ts' } },
-				{ oldUri: { fsPath: 'C:/repo-b/file.ts' }, newUri: { fsPath: 'C:/repo-b/renamed.ts' } },
-				{ oldUri: { fsPath: 'C:/repo-a/file.ts' }, newUri: { fsPath: 'C:/repo-a/renamed.ts' } }
-			]
-		});
-		workspaceState.createListener?.({ files: [{ fsPath: 'C:/repo-a/new.ts' }, { fsPath: 'C:/repo-a/new.ts' }] });
-		workspaceState.deleteListener?.({ files: [{ fsPath: 'C:/repo-a/deleted.ts' }, { fsPath: 'C:/repo-a/deleted.ts' }] });
-		workspaceState.configListener?.({
-			affectsConfiguration: vi.fn((key: string, folder?: TestWorkspaceFolder) => key === 'explorerSorter.ignoredDirectories' && folder?.name === 'repo-a')
-		});
-
-		// Assert
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/file.ts' });
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/file.ts' });
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[1], { fsPath: 'C:/repo-b/file.ts' });
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/new.ts' });
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(workspaceState.workspaceFolders?.[0], { fsPath: 'C:/repo-a/deleted.ts' });
-		expect(setTimeout).toHaveBeenCalledTimes(6);
-		expect(vscodeMock.workspace.getWorkspaceFolder).toHaveBeenCalledTimes(18);
-
-		for (const callback of timerState.callbacks) {
-			callback();
-		}
-		await Promise.resolve();
-
-		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(8);
+		workspaceSorterSpies.sort.mockImplementationOnce(
+			() =>
+				new Promise<undefined>((resolve) => {
+					resolveSort = () => resolve(undefined);
+				})
+		);
+		workspaceState.watcherRegistrations[0].createListener?.(createUri('C:/repo-a/new.ts'));
+		workspaceState.watcherRegistrations[0].deleteListener?.(createUri('C:/repo-a/deleted.ts'));
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(1);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(
+			workspaceState.workspaceFolders?.[0],
+			expect.objectContaining({ fsPath: 'C:/repo-a/new.ts' })
+		);
+		resolveSort?.();
+		await flushPromises();
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(2);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenLastCalledWith(
+			workspaceState.workspaceFolders?.[0],
+			expect.objectContaining({ fsPath: 'C:/repo-a/deleted.ts' })
+		);
+		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(4);
 	});
 
-	it('ignores workspace events without a matching workspace folder', async () => {
-		// Arrange
+	it('re-runs a queued config-triggered sort without enforcing path mtimes', async () => {
+		let resolveSort: (() => void) | undefined;
 		const { activate } = await import('../src/extension.ts');
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
+		workspaceSorterSpies.sort.mockImplementationOnce(
+			() =>
+				new Promise<undefined>((resolve) => {
+					resolveSort = () => resolve(undefined);
+				})
+		);
+		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/file.ts'));
+		const affectsConfiguration = vi.fn((key: string, folder?: TestWorkspaceFolder) => key === 'explorerSorter.ignoredDirectories' && folder?.name === 'repo-a');
+		workspaceState.configListener?.({ affectsConfiguration });
+		resolveSort?.();
+		await flushPromises();
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(
+			workspaceState.workspaceFolders?.[0],
+			expect.objectContaining({ fsPath: 'C:/repo-a/file.ts' })
+		);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(1);
+		expect(affectsConfiguration).toHaveBeenCalledWith('explorerSorter.ignoredDirectories', workspaceState.workspaceFolders?.[0]);
+		expect(affectsConfiguration).toHaveBeenCalledWith('explorerSorter.extraIgnoredDirectories', workspaceState.workspaceFolders?.[0]);
+		expect(affectsConfiguration).toHaveBeenCalledWith('explorerSorter.ignoredDirectories', workspaceState.workspaceFolders?.[1]);
+		expect(affectsConfiguration).toHaveBeenCalledWith('explorerSorter.extraIgnoredDirectories', workspaceState.workspaceFolders?.[1]);
+		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(4);
+	});
 
-		// Act
-		workspaceState.saveListener?.({ uri: { fsPath: 'C:/outside/file.ts' } });
-		workspaceState.configListener?.({ affectsConfiguration: vi.fn(() => false) });
+	it('ignores self-triggered paths and reads fresh ignore settings for watcher changes', async () => {
+		workspaceState.ignoredDirectories = ['bin'];
+		workspaceSorterSpies.isSelfTriggeredMtimeChange.mockImplementation((uri: TestUri) => uri.fsPath.endsWith('self.ts'));
+		const { activate } = await import('../src/extension.ts');
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
+		workspaceState.extraIgnoredDirectories = ['cache'];
+		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/self.ts'));
+		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/bin/generated.ts'));
+		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/cache/generated.ts'));
+		await flushPromises();
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).not.toHaveBeenCalled();
+		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(2);
+		expect(workspaceState.configurationRequests).toContainEqual({
+			section: 'explorerSorter',
+			folder: workspaceState.workspaceFolders?.[0],
+			key: 'ignoredDirectories',
+			defaultValue: []
+		});
+		expect(workspaceState.configurationRequests).toContainEqual({
+			section: 'explorerSorter',
+			folder: workspaceState.workspaceFolders?.[0],
+			key: 'extraIgnoredDirectories',
+			defaultValue: []
+		});
+	});
 
-		// Assert
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).not.toHaveBeenCalledWith(expect.anything(), { fsPath: 'C:/outside/file.ts' });
-		expect(setTimeout).not.toHaveBeenCalled();
+	it('does not ignore paths when configuration keys fall back to defaults', async () => {
+		const { activate } = await import('../src/extension.ts');
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
+		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/__invalid__/Stryker was here.ts'));
+		await flushPromises();
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(
+			workspaceState.workspaceFolders?.[0],
+			expect.objectContaining({ fsPath: 'C:/repo-a/__invalid__/Stryker was here.ts' })
+		);
+		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(3);
 	});
 
 	it('skips startup sorting when no workspace folders exist and does not show output in production', async () => {
-		// Arrange
 		workspaceState.workspaceFolders = undefined;
 		const { activate } = await import('../src/extension.ts');
-
-		// Act
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
-
-		// Assert
 		expect(workspaceSorterSpies.sort).not.toHaveBeenCalled();
 		expect(workspaceSorterSpies.constructors).toHaveLength(0);
 		expect(outputSpies.appendLine).toHaveBeenCalledTimes(1);
@@ -220,62 +288,43 @@ describe('extension', () => {
 	});
 
 	it('ignores configuration changes when no workspace folders exist', async () => {
-		// Arrange
-		const { activate } = await import('../src/extension.js');
-		await activate(createContext(vscodeMock.ExtensionMode.Production));
-		workspaceState.workspaceFolders = undefined;
-
-		// Act
-		workspaceState.configListener?.({ affectsConfiguration: vi.fn(() => true) });
-
-		// Assert
-		expect(setTimeout).not.toHaveBeenCalled();
-	});
-
-	it('logs non-error sort failures and skips undefined workspace folders from file events', async () => {
-		// Arrange
-		workspaceSorterSpies.sort.mockRejectedValueOnce('boom');
-		workspaceState.workspaceFolderByUri.set('C:/repo-a/missing.ts', undefined);
 		const { activate } = await import('../src/extension.ts');
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
-
-		// Act
-		workspaceState.renameListener?.({
-			files: [
-				{ oldUri: { fsPath: 'C:/repo-a/file.ts' }, newUri: { fsPath: 'C:/repo-a/renamed.ts' } },
-				{ oldUri: { fsPath: 'C:/repo-a/missing.ts' }, newUri: { fsPath: 'C:/repo-a/missing.ts' } }
-			]
-		});
-		workspaceState.createListener?.({ files: [{ fsPath: 'C:/repo-a/new.ts' }, { fsPath: 'C:/repo-a/missing.ts' }] });
-		workspaceState.deleteListener?.({ files: [{ fsPath: 'C:/repo-a/deleted.ts' }, { fsPath: 'C:/repo-a/missing.ts' }] });
-		workspaceState.configListener?.({
-			affectsConfiguration: vi.fn((key: string) => key === 'explorerSorter.extraIgnoredDirectories')
-		});
-		await Promise.resolve();
-
-		// Assert
-		expect(outputSpies.appendLine).toHaveBeenCalledWith('sortWorkspace failed: boom');
-		expect(vscodeMock.workspace.getWorkspaceFolder).toHaveBeenCalledWith({ fsPath: 'C:/repo-a/missing.ts' });
-		expect(setTimeout).toHaveBeenCalledTimes(5);
+		workspaceState.workspaceFolders = undefined;
+		workspaceState.configListener?.({ affectsConfiguration: vi.fn(() => true) });
+		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(2);
 	});
 
-	it('logs sort failures and clears debounce timers on disposal', async () => {
-		// Arrange
+	it('logs non-error sort failures', async () => {
+		workspaceSorterSpies.sort.mockRejectedValueOnce('boom');
+		const { activate } = await import('../src/extension.ts');
+		await activate(createContext(vscodeMock.ExtensionMode.Production));
+		expect(outputSpies.appendLine).toHaveBeenCalledWith('sortWorkspace failed: boom');
+	});
+
+	it('logs sort failures and clears queued state on disposal', async () => {
+		let resolveSort: (() => void) | undefined;
 		workspaceSorterSpies.sort.mockRejectedValueOnce(new Error('boom'));
-		workspaceState.workspaceFolderByUri.set('C:/repo-b/file.ts', workspaceState.workspaceFolders?.[1]);
 		const { activate, deactivate } = await import('../src/extension.ts');
 		const context = createContext(vscodeMock.ExtensionMode.Production);
-
-		// Act
 		await activate(context);
-		workspaceState.saveListener?.({ uri: { fsPath: 'C:/repo-a/file.ts' } });
-		workspaceState.saveListener?.({ uri: { fsPath: 'C:/repo-b/file.ts' } });
+		workspaceSorterSpies.sort.mockImplementationOnce(
+			() =>
+				new Promise<undefined>((resolve) => {
+					resolveSort = () => resolve(undefined);
+				})
+		);
+		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/file.ts'));
+		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/queued.ts'));
 		context.subscriptions.at(-1)?.dispose();
+		resolveSort?.();
+		await flushPromises();
 		deactivate();
-
-		// Assert
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('sortWorkspace failed: boom');
-		expect(clearTimeout).toHaveBeenCalledWith(1);
-		expect(clearTimeout).toHaveBeenCalledWith(2);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).not.toHaveBeenCalledWith(
+			workspaceState.workspaceFolders?.[0],
+			expect.objectContaining({ fsPath: 'C:/repo-a/queued.ts' })
+		);
+		expect(() => context.subscriptions.at(-1)?.dispose()).not.toThrow();
 	});
 });

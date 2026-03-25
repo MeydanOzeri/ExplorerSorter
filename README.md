@@ -24,6 +24,7 @@ ExplorerSorter solves that problem with a simple `.order` file.
 - Exact path rules
 - Glob rules
 - Recursive `.order` inheritance
+- Reacts to file changes made outside VS Code
 - Folders kept before files
 - Lexical fallback for unmatched entries
 - Works well for large workspaces and monorepos
