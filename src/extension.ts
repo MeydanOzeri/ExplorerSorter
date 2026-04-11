@@ -29,38 +29,46 @@ const sortWorkspace = async (outputChannel: OutputChannel, workspaceFolder: Work
 	}
 };
 
+const queueChangedPaths = (queuedWorkspaceSorts: Map<string, Map<string, Uri>>, relevantChangedPaths: Uri[], workspaceFolder: WorkspaceFolder) => {
+	const queuedChangedPaths = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath) ?? new Map<string, Uri>();
+	for (const changedPath of relevantChangedPaths) {
+		queuedChangedPaths.set(changedPath.fsPath, changedPath);
+	}
+	queuedWorkspaceSorts.set(workspaceFolder.uri.fsPath, queuedChangedPaths);
+};
+
 const triggerWorkspaceSort = async (
 	runningWorkspaceSorts: Set<string>,
-	queuedWorkspaceSorts: Map<string, Uri | undefined>,
+	queuedWorkspaceSorts: Map<string, Map<string, Uri>>,
 	outputChannel: OutputChannel,
 	workspaceFolder: WorkspaceFolder,
-	changedPath?: Uri
+	changedPaths: Uri[] = []
 ) => {
-	if (changedPath && (isIgnoredPath(workspaceFolder, changedPath) || WorkspaceSorter.isSelfTriggeredMtimeChange(changedPath))) {
+	const relevantChangedPaths = changedPaths.filter((changedPath) => !isIgnoredPath(workspaceFolder, changedPath) && !WorkspaceSorter.isSelfTriggeredMtimeChange(changedPath));
+	if (relevantChangedPaths.length === 0 && changedPaths.length > 0) {
 		return;
 	}
 	if (runningWorkspaceSorts.has(workspaceFolder.uri.fsPath)) {
-		queuedWorkspaceSorts.set(workspaceFolder.uri.fsPath, changedPath ?? undefined);
-		return;
+		return queueChangedPaths(queuedWorkspaceSorts, relevantChangedPaths, workspaceFolder);
 	}
 	try {
 		runningWorkspaceSorts.add(workspaceFolder.uri.fsPath);
-		if (changedPath) {
+		for (const changedPath of relevantChangedPaths) {
 			WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, changedPath);
 		}
 		await sortWorkspace(outputChannel, workspaceFolder);
 	} finally {
 		runningWorkspaceSorts.delete(workspaceFolder.uri.fsPath);
-		const queuedChangedPath = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath);
+		const queuedChangedPaths = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath) ?? new Map<string, Uri>();
 		if (queuedWorkspaceSorts.delete(workspaceFolder.uri.fsPath)) {
-			await triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, queuedChangedPath);
+			await triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [...queuedChangedPaths.values()]);
 		}
 	}
 };
 
 const activate = async (context: ExtensionContext) => {
 	const runningWorkspaceSorts = new Set<string>();
-	const queuedWorkspaceSorts = new Map<string, Uri | undefined>();
+	const queuedWorkspaceSorts = new Map<string, Map<string, Uri>>();
 	const workspaceWatchers: FileSystemWatcher[] = [];
 	const outputChannel = window.createOutputChannel('ExplorerSorter');
 	if (context.extensionMode === ExtensionMode.Development) {
@@ -70,9 +78,9 @@ const activate = async (context: ExtensionContext) => {
 	for (const workspaceFolder of workspace.workspaceFolders ?? []) {
 		await sortWorkspace(outputChannel, workspaceFolder);
 		const workspaceWatcher = workspace.createFileSystemWatcher(new RelativePattern(workspaceFolder, '**'));
-		workspaceWatcher.onDidChange((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
-		workspaceWatcher.onDidCreate((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
-		workspaceWatcher.onDidDelete((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
+		workspaceWatcher.onDidChange((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [uri]));
+		workspaceWatcher.onDidCreate((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [uri]));
+		workspaceWatcher.onDidDelete((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [uri]));
 		workspaceWatchers.push(workspaceWatcher);
 	}
 	context.subscriptions.push(
