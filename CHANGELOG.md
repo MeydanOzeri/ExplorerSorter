@@ -1,3 +1,9 @@
+## [1.0.7](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.6...v1.0.7) (2026-04-11)
+
+### Bug Fixes
+
+* restore all queued external mtime changes during running sorts ([#17](https://github.com/MeydanOzeri/ExplorerSorter/issues/17)) ([fbe1ad9](https://github.com/MeydanOzeri/ExplorerSorter/commit/fbe1ad9997545744612d36915549468d5200e212))
+
 ## [1.0.6](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.5...v1.0.6) (2026-03-25)
 
 ### Bug Fixes
