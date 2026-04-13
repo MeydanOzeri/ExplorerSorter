@@ -29,46 +29,38 @@ const sortWorkspace = async (outputChannel: OutputChannel, workspaceFolder: Work
 	}
 };
 
-const queueChangedPaths = (queuedWorkspaceSorts: Map<string, Map<string, Uri>>, relevantChangedPaths: Uri[], workspaceFolder: WorkspaceFolder) => {
-	const queuedChangedPaths = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath) ?? new Map<string, Uri>();
-	for (const changedPath of relevantChangedPaths) {
-		queuedChangedPaths.set(changedPath.fsPath, changedPath);
-	}
-	queuedWorkspaceSorts.set(workspaceFolder.uri.fsPath, queuedChangedPaths);
-};
-
 const triggerWorkspaceSort = async (
 	runningWorkspaceSorts: Set<string>,
-	queuedWorkspaceSorts: Map<string, Map<string, Uri>>,
+	queuedWorkspaceSorts: Map<string, Uri | undefined>,
 	outputChannel: OutputChannel,
 	workspaceFolder: WorkspaceFolder,
-	changedPaths: Uri[] = []
+	changedPath?: Uri
 ) => {
-	const relevantChangedPaths = changedPaths.filter((changedPath) => !isIgnoredPath(workspaceFolder, changedPath) && !WorkspaceSorter.isSelfTriggeredMtimeChange(changedPath));
-	if (relevantChangedPaths.length === 0 && changedPaths.length > 0) {
-		return;
+	if (changedPath) {
+		if (isIgnoredPath(workspaceFolder, changedPath) || WorkspaceSorter.isSelfTriggeredMtimeChange(changedPath)) {
+			return;
+		}
+		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, changedPath);
 	}
 	if (runningWorkspaceSorts.has(workspaceFolder.uri.fsPath)) {
-		return queueChangedPaths(queuedWorkspaceSorts, relevantChangedPaths, workspaceFolder);
+		queuedWorkspaceSorts.set(workspaceFolder.uri.fsPath, changedPath ?? undefined);
+		return;
 	}
 	try {
 		runningWorkspaceSorts.add(workspaceFolder.uri.fsPath);
-		for (const changedPath of relevantChangedPaths) {
-			WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, changedPath);
-		}
 		await sortWorkspace(outputChannel, workspaceFolder);
 	} finally {
 		runningWorkspaceSorts.delete(workspaceFolder.uri.fsPath);
-		const queuedChangedPaths = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath) ?? new Map<string, Uri>();
+		const queuedChangedPath = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath);
 		if (queuedWorkspaceSorts.delete(workspaceFolder.uri.fsPath)) {
-			await triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [...queuedChangedPaths.values()]);
+			await triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, queuedChangedPath);
 		}
 	}
 };
 
 const activate = async (context: ExtensionContext) => {
 	const runningWorkspaceSorts = new Set<string>();
-	const queuedWorkspaceSorts = new Map<string, Map<string, Uri>>();
+	const queuedWorkspaceSorts = new Map<string, Uri>();
 	const workspaceWatchers: FileSystemWatcher[] = [];
 	const outputChannel = window.createOutputChannel('ExplorerSorter');
 	if (context.extensionMode === ExtensionMode.Development) {
@@ -78,9 +70,9 @@ const activate = async (context: ExtensionContext) => {
 	for (const workspaceFolder of workspace.workspaceFolders ?? []) {
 		await sortWorkspace(outputChannel, workspaceFolder);
 		const workspaceWatcher = workspace.createFileSystemWatcher(new RelativePattern(workspaceFolder, '**'));
-		workspaceWatcher.onDidChange((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [uri]));
-		workspaceWatcher.onDidCreate((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [uri]));
-		workspaceWatcher.onDidDelete((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, [uri]));
+		workspaceWatcher.onDidChange((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
+		workspaceWatcher.onDidCreate((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
+		workspaceWatcher.onDidDelete((uri) => void triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, uri));
 		workspaceWatchers.push(workspaceWatcher);
 	}
 	context.subscriptions.push(
