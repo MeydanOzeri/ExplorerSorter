@@ -1,3 +1,9 @@
+## [1.0.8](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.7...v1.0.8) (2026-04-13)
+
+### Bug Fixes
+
+* restore watcher mtimes immediately during running sorts ([#18](https://github.com/MeydanOzeri/ExplorerSorter/issues/18)) ([7034de9](https://github.com/MeydanOzeri/ExplorerSorter/commit/7034de9a8538867a17d057f9ddf5afbd686c9c0e))
+
 ## [1.0.7](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.6...v1.0.7) (2026-04-11)
 
 ### Bug Fixes
