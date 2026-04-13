@@ -2,7 +2,7 @@
 	"name": "explorer-sorter",
 	"displayName": "ExplorerSorter",
 	"description": "Manually sort files and folders in the VS Code Explorer using .order files. Define a custom file order for your workspace or project without replacing the built-in Explorer.",
-	"version": "1.0.8",
+	"version": "1.0.9",
 	"publisher": "MeydanOzeri",
 	"icon": "images/icon.png",
 	"license": "MIT",

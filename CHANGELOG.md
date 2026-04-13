@@ -1,3 +1,9 @@
+## [1.0.9](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.8...v1.0.9) (2026-04-13)
+
+### Bug Fixes
+
+* avoid replaying queued paths after running sorts ([#19](https://github.com/MeydanOzeri/ExplorerSorter/issues/19)) ([76ec87c](https://github.com/MeydanOzeri/ExplorerSorter/commit/76ec87cfa5b746f8a9c2662c7eb09bbbabbfa468))
+
 ## [1.0.8](https://github.com/MeydanOzeri/ExplorerSorter/compare/v1.0.7...v1.0.8) (2026-04-13)
 
 ### Bug Fixes
