@@ -31,7 +31,7 @@ const sortWorkspace = async (outputChannel: OutputChannel, workspaceFolder: Work
 
 const triggerWorkspaceSort = async (
 	runningWorkspaceSorts: Set<string>,
-	queuedWorkspaceSorts: Map<string, Uri | undefined>,
+	queuedWorkspaceSorts: Set<string>,
 	outputChannel: OutputChannel,
 	workspaceFolder: WorkspaceFolder,
 	changedPath?: Uri
@@ -43,7 +43,7 @@ const triggerWorkspaceSort = async (
 		WorkspaceSorter.enforcePreviousOrderOnMtimeChange(workspaceFolder, changedPath);
 	}
 	if (runningWorkspaceSorts.has(workspaceFolder.uri.fsPath)) {
-		queuedWorkspaceSorts.set(workspaceFolder.uri.fsPath, changedPath ?? undefined);
+		queuedWorkspaceSorts.add(workspaceFolder.uri.fsPath);
 		return;
 	}
 	try {
@@ -51,16 +51,15 @@ const triggerWorkspaceSort = async (
 		await sortWorkspace(outputChannel, workspaceFolder);
 	} finally {
 		runningWorkspaceSorts.delete(workspaceFolder.uri.fsPath);
-		const queuedChangedPath = queuedWorkspaceSorts.get(workspaceFolder.uri.fsPath);
 		if (queuedWorkspaceSorts.delete(workspaceFolder.uri.fsPath)) {
-			await triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder, queuedChangedPath);
+			await triggerWorkspaceSort(runningWorkspaceSorts, queuedWorkspaceSorts, outputChannel, workspaceFolder);
 		}
 	}
 };
 
 const activate = async (context: ExtensionContext) => {
 	const runningWorkspaceSorts = new Set<string>();
-	const queuedWorkspaceSorts = new Map<string, Uri>();
+	const queuedWorkspaceSorts = new Set<string>();
 	const workspaceWatchers: FileSystemWatcher[] = [];
 	const outputChannel = window.createOutputChannel('ExplorerSorter');
 	if (context.extensionMode === ExtensionMode.Development) {

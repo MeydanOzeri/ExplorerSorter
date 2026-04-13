@@ -185,7 +185,7 @@ describe('extension', () => {
 		expect(outputSpies.show).toHaveBeenCalledOnce();
 	});
 
-	it('restores watcher changes immediately and re-applies the latest queued path on the follow-up sort', async () => {
+	it('restores watcher changes immediately and delays only the follow-up sort', async () => {
 		let resolveSort: (() => void) | undefined;
 		const { activate } = await import('../src/extension.ts');
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
@@ -208,15 +208,11 @@ describe('extension', () => {
 		);
 		resolveSort?.();
 		await flushPromises();
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(3);
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenLastCalledWith(
-			workspaceState.workspaceFolders?.[0],
-			expect.objectContaining({ fsPath: 'C:/repo-a/deleted.ts' })
-		);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(2);
 		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(4);
 	});
 
-	it('restores every watcher change immediately and re-applies only the latest queued path on the follow-up sort', async () => {
+	it('restores every watcher change immediately and coalesces them into one follow-up sort', async () => {
 		let resolveSort: (() => void) | undefined;
 		const { activate } = await import('../src/extension.ts');
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
@@ -247,12 +243,7 @@ describe('extension', () => {
 		);
 		resolveSort?.();
 		await flushPromises();
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(4);
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenNthCalledWith(
-			4,
-			workspaceState.workspaceFolders?.[0],
-			expect.objectContaining({ fsPath: 'C:/repo-a/third.ts' })
-		);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(3);
 		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(4);
 	});
 
