@@ -185,7 +185,7 @@ describe('extension', () => {
 		expect(outputSpies.show).toHaveBeenCalledOnce();
 	});
 
-	it('re-runs the latest queued watcher change after the current sort finishes', async () => {
+	it('restores watcher changes immediately and re-applies the latest queued path on the follow-up sort', async () => {
 		let resolveSort: (() => void) | undefined;
 		const { activate } = await import('../src/extension.ts');
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
@@ -197,14 +197,18 @@ describe('extension', () => {
 		);
 		workspaceState.watcherRegistrations[0].createListener?.(createUri('C:/repo-a/new.ts'));
 		workspaceState.watcherRegistrations[0].deleteListener?.(createUri('C:/repo-a/deleted.ts'));
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(1);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(2);
 		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(
 			workspaceState.workspaceFolders?.[0],
 			expect.objectContaining({ fsPath: 'C:/repo-a/new.ts' })
 		);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(
+			workspaceState.workspaceFolders?.[0],
+			expect.objectContaining({ fsPath: 'C:/repo-a/deleted.ts' })
+		);
 		resolveSort?.();
 		await flushPromises();
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(2);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(3);
 		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenLastCalledWith(
 			workspaceState.workspaceFolders?.[0],
 			expect.objectContaining({ fsPath: 'C:/repo-a/deleted.ts' })
@@ -212,7 +216,7 @@ describe('extension', () => {
 		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(4);
 	});
 
-	it('restores every queued watcher change after the current sort finishes', async () => {
+	it('restores every watcher change immediately and re-applies only the latest queued path on the follow-up sort', async () => {
 		let resolveSort: (() => void) | undefined;
 		const { activate } = await import('../src/extension.ts');
 		await activate(createContext(vscodeMock.ExtensionMode.Production));
@@ -225,15 +229,12 @@ describe('extension', () => {
 		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/first.ts'));
 		workspaceState.watcherRegistrations[0].changeListener?.(createUri('C:/repo-a/second.ts'));
 		workspaceState.watcherRegistrations[0].deleteListener?.(createUri('C:/repo-a/third.ts'));
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(1);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(3);
 		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenNthCalledWith(
 			1,
 			workspaceState.workspaceFolders?.[0],
 			expect.objectContaining({ fsPath: 'C:/repo-a/first.ts' })
 		);
-		resolveSort?.();
-		await flushPromises();
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(3);
 		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenNthCalledWith(
 			2,
 			workspaceState.workspaceFolders?.[0],
@@ -241,6 +242,14 @@ describe('extension', () => {
 		);
 		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenNthCalledWith(
 			3,
+			workspaceState.workspaceFolders?.[0],
+			expect.objectContaining({ fsPath: 'C:/repo-a/third.ts' })
+		);
+		resolveSort?.();
+		await flushPromises();
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledTimes(4);
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenNthCalledWith(
+			4,
 			workspaceState.workspaceFolders?.[0],
 			expect.objectContaining({ fsPath: 'C:/repo-a/third.ts' })
 		);
@@ -337,7 +346,7 @@ describe('extension', () => {
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('sortWorkspace failed: boom');
 	});
 
-	it('logs sort failures and clears queued state on disposal', async () => {
+	it('logs sort failures, clears queued state on disposal, and still restores incoming paths immediately', async () => {
 		let resolveSort: (() => void) | undefined;
 		workspaceSorterSpies.sort.mockRejectedValueOnce(new Error('boom'));
 		const { activate, deactivate } = await import('../src/extension.ts');
@@ -356,10 +365,11 @@ describe('extension', () => {
 		await flushPromises();
 		deactivate();
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('sortWorkspace failed: boom');
-		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).not.toHaveBeenCalledWith(
+		expect(workspaceSorterSpies.enforcePreviousOrderOnMtimeChange).toHaveBeenCalledWith(
 			workspaceState.workspaceFolders?.[0],
 			expect.objectContaining({ fsPath: 'C:/repo-a/queued.ts' })
 		);
+		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(3);
 		expect(() => context.subscriptions.at(-1)?.dispose()).not.toThrow();
 	});
 });
