@@ -19,7 +19,8 @@ class OrderRulesParser {
 			.split(/\r?\n/)
 			.map((orderLine) => {
 				const line = this.#normalizePath(orderLine);
-				const lineType: 'glob' | 'exact' = /[*?[\]{}]/.test(line) ? 'glob' : 'exact';
+				// Determine line type: 'simple' if no path separators, 'glob' if has glob chars, 'exact' otherwise
+				const lineType: 'glob' | 'exact' | 'simple' = line.includes('/') ? (/[*?[\]{}]/.test(line) ? 'glob' : 'exact') : /[*?[\]{}]/.test(line) ? 'glob' : 'simple';
 				return { line, lineType };
 			})
 			.filter(({ line }) => line.length > 0 && !line.startsWith('#'));

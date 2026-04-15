@@ -1,4 +1,4 @@
-type OrderRuleType = 'glob' | 'exact';
+type OrderRuleType = 'glob' | 'exact' | 'simple';
 
 type OrderRule = {
 	line: string;
