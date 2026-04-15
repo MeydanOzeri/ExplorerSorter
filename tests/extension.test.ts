@@ -37,7 +37,8 @@ const workspaceState = vi.hoisted(() => ({
 	configListener: undefined as ((event: TestConfigurationEvent) => void) | undefined,
 	ignoredDirectories: [] as string[],
 	extraIgnoredDirectories: [] as string[],
-	configurationRequests: [] as TestConfigurationRequest[]
+	configurationRequests: [] as TestConfigurationRequest[],
+	registeredCommands: {} as Record<string, (...args: any[]) => any>
 }));
 
 const outputSpies = vi.hoisted(() => ({
@@ -50,6 +51,20 @@ const workspaceSorterSpies = vi.hoisted(() => ({
 	sort: vi.fn(async () => undefined),
 	enforcePreviousOrderOnMtimeChange: vi.fn(),
 	isSelfTriggeredMtimeChange: vi.fn<(uri: TestUri) => boolean>(() => false)
+}));
+
+const fsSpies = vi.hoisted(() => ({
+	readdir: vi.fn(),
+	access: vi.fn(),
+	writeFile: vi.fn()
+}));
+
+vi.mock('fs', () => ({
+	promises: {
+		readdir: fsSpies.readdir,
+		access: fsSpies.access,
+		writeFile: fsSpies.writeFile
+	}
 }));
 
 vi.mock('../src/WorkspaceSorter.ts', () => {
@@ -81,7 +96,11 @@ const vscodeMock = vi.hoisted(() => ({
 		}
 	},
 	window: {
-		createOutputChannel: vi.fn(() => outputSpies)
+		createOutputChannel: vi.fn(() => outputSpies),
+		showWarningMessage: vi.fn(),
+		showInformationMessage: vi.fn(),
+		showErrorMessage: vi.fn(),
+		showTextDocument: vi.fn()
 	},
 	workspace: {
 		get workspaceFolders() {
@@ -130,6 +149,13 @@ const vscodeMock = vi.hoisted(() => ({
 		onDidChangeConfiguration: vi.fn((listener: (event: TestConfigurationEvent) => void) => {
 			workspaceState.configListener = listener;
 			return { dispose: vi.fn() };
+		}),
+		openTextDocument: vi.fn()
+	},
+	commands: {
+		registerCommand: vi.fn((command: string, handler: (...args: any[]) => any) => {
+			workspaceState.registeredCommands[command] = handler;
+			return { dispose: vi.fn() };
 		})
 	},
 	Disposable: class {
@@ -155,6 +181,7 @@ describe('extension', () => {
 		workspaceState.ignoredDirectories = [];
 		workspaceState.extraIgnoredDirectories = [];
 		workspaceState.configurationRequests = [];
+		workspaceState.registeredCommands = {};
 		workspaceSorterSpies.constructors.length = 0;
 		workspaceSorterSpies.sort.mockReset();
 		workspaceSorterSpies.sort.mockResolvedValue(undefined);
@@ -176,7 +203,7 @@ describe('extension', () => {
 			expect.objectContaining({ baseFolder: workspaceState.workspaceFolders?.[0], pattern: '**' }),
 			expect.objectContaining({ baseFolder: workspaceState.workspaceFolders?.[1], pattern: '**' })
 		]);
-		expect(context.subscriptions).toHaveLength(4);
+		expect(context.subscriptions).toHaveLength(5);
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('Extension "ExplorerSorter" is now active!');
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('Sorting workspace repo-a on path: C:/repo-a');
 		expect(outputSpies.appendLine).toHaveBeenCalledWith('Sorting workspace repo-b on path: C:/repo-b');
@@ -362,5 +389,186 @@ describe('extension', () => {
 		);
 		expect(workspaceSorterSpies.sort).toHaveBeenCalledTimes(3);
 		expect(() => context.subscriptions.at(-1)?.dispose()).not.toThrow();
+	});
+
+	describe('generateOrderFile command', () => {
+		it('generates .order file with folders before files, all sorted alphabetically', async () => {
+			type Dirent = { name: string; isDirectory: () => boolean };
+			const mockDirents: Dirent[] = [
+				{ name: 'zFolder', isDirectory: () => true },
+				{ name: 'aFile.ts', isDirectory: () => false },
+				{ name: 'aFolder', isDirectory: () => true },
+				{ name: 'zFile.ts', isDirectory: () => false }
+			];
+
+			fsSpies.access.mockRejectedValueOnce(new Error('File not found'));
+			fsSpies.readdir.mockResolvedValueOnce(mockDirents);
+			fsSpies.writeFile.mockResolvedValueOnce(undefined);
+			vscodeMock.workspace.openTextDocument.mockResolvedValueOnce({ uri: { fsPath: 'C:/repo/test/.order' } });
+
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(createUri('C:/repo/test'));
+
+				expect(fsSpies.readdir).toHaveBeenCalledWith('C:/repo/test', { withFileTypes: true });
+				expect(fsSpies.writeFile).toHaveBeenCalledWith('C:\\repo\\test\\.order', 'aFolder\nzFolder\naFile.ts\nzFile.ts\n', 'utf8');
+				expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith('.order file generated successfully!');
+			}
+		});
+
+		it('shows error message when no folder is selected', async () => {
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(undefined);
+
+				expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith('Please select a folder to generate the .order file.');
+				expect(fsSpies.readdir).not.toHaveBeenCalled();
+			}
+		});
+
+		it('asks for confirmation and overwrites existing .order file when user selects Yes', async () => {
+			type Dirent = { name: string; isDirectory: () => boolean };
+			const mockDirents: Dirent[] = [
+				{ name: 'file1.ts', isDirectory: () => false },
+				{ name: 'file2.ts', isDirectory: () => false }
+			];
+
+			fsSpies.access.mockResolvedValueOnce(undefined); // File exists
+			vscodeMock.window.showWarningMessage.mockResolvedValueOnce('Yes');
+			fsSpies.readdir.mockResolvedValueOnce(mockDirents);
+			fsSpies.writeFile.mockResolvedValueOnce(undefined);
+			vscodeMock.workspace.openTextDocument.mockResolvedValueOnce({ uri: { fsPath: 'C:/repo/test/.order' } });
+
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(createUri('C:/repo/test'));
+
+				expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith('.order file already exists. Do you want to overwrite it?', { modal: true }, 'Yes', 'No');
+				expect(fsSpies.writeFile).toHaveBeenCalledWith('C:\\repo\\test\\.order', 'file1.ts\nfile2.ts\n', 'utf8');
+			}
+		});
+
+		it('does not overwrite existing .order file when user selects No', async () => {
+			fsSpies.access.mockResolvedValueOnce(undefined); // File exists
+			vscodeMock.window.showWarningMessage.mockResolvedValueOnce('No');
+
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(createUri('C:/repo/test'));
+
+				expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith('.order file already exists. Do you want to overwrite it?', { modal: true }, 'Yes', 'No');
+				expect(fsSpies.writeFile).not.toHaveBeenCalled();
+			}
+		});
+
+		it('logs and shows error message when file system operations fail', async () => {
+			const errorMessage = 'Permission denied';
+			fsSpies.access.mockRejectedValueOnce(new Error('File not found'));
+			fsSpies.readdir.mockRejectedValueOnce(new Error(errorMessage));
+
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(createUri('C:/repo/test'));
+
+				expect(outputSpies.appendLine).toHaveBeenCalledWith(`generateOrderFile failed: ${errorMessage}`);
+				expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(`Failed to generate .order file: ${errorMessage}`);
+			}
+		});
+
+		it('logs and shows error message when a non-Error object is thrown', async () => {
+			const errorValue = 'custom error string';
+			fsSpies.access.mockRejectedValueOnce(new Error('File not found'));
+			fsSpies.readdir.mockRejectedValueOnce(errorValue);
+
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(createUri('C:/repo/test'));
+
+				expect(outputSpies.appendLine).toHaveBeenCalledWith(`generateOrderFile failed: ${errorValue}`);
+				expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(`Failed to generate .order file: ${errorValue}`);
+			}
+		});
+
+		it('generates empty .order file for empty folder', async () => {
+			fsSpies.access.mockRejectedValueOnce(new Error('File not found'));
+			fsSpies.readdir.mockResolvedValueOnce([]);
+			fsSpies.writeFile.mockResolvedValueOnce(undefined);
+			vscodeMock.workspace.openTextDocument.mockResolvedValueOnce({ uri: { fsPath: 'C:/repo/test/.order' } });
+
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(createUri('C:/repo/test'));
+
+				expect(fsSpies.writeFile).toHaveBeenCalledWith('C:\\repo\\test\\.order', '', 'utf8');
+				expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith('.order file generated successfully!');
+			}
+		});
+
+		it('opens the generated .order file in the editor', async () => {
+			type Dirent = { name: string; isDirectory: () => boolean };
+			const mockDirents: Dirent[] = [{ name: 'file.ts', isDirectory: () => false }];
+			const mockDocument = { uri: { fsPath: 'C:/repo/test/.order' } };
+
+			fsSpies.access.mockRejectedValueOnce(new Error('File not found'));
+			fsSpies.readdir.mockResolvedValueOnce(mockDirents);
+			fsSpies.writeFile.mockResolvedValueOnce(undefined);
+			vscodeMock.workspace.openTextDocument.mockResolvedValueOnce(mockDocument);
+
+			const { activate } = await import('../src/extension.ts');
+			const context = createContext(vscodeMock.ExtensionMode.Production);
+			await activate(context);
+
+			const generateCommand = workspaceState.registeredCommands['explorerSorter.generateOrderFile'];
+			expect(generateCommand).toBeDefined();
+
+			if (generateCommand) {
+				await generateCommand(createUri('C:/repo/test'));
+
+				expect(vscodeMock.workspace.openTextDocument).toHaveBeenCalledWith('C:\\repo\\test\\.order');
+				expect(vscodeMock.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
+			}
+		});
 	});
 });
