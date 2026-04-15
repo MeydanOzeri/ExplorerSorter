@@ -267,6 +267,69 @@ describe('WorkspaceSorter', () => {
 		expect(touchedPaths).toContain('C:/repo/root.ts');
 	});
 
+	it('applies simple rules to match files in the same directory only', async () => {
+		// Arrange
+		workspaceState.directories.set('C:/repo', [
+			['.order', 1],
+			['src', 2],
+			['alpha.ts', 1],
+			['beta.ts', 1]
+		]);
+		workspaceState.directories.set('C:/repo/src', [
+			['.order', 1],
+			['alpha.ts', 1],
+			['beta.ts', 1],
+			['nested.ts', 1]
+		]);
+		workspaceState.orderFiles.set('C:/repo/.order', 'beta.ts\nsrc');
+		workspaceState.orderFiles.set('C:/repo/src/.order', 'nested.ts\nalpha.ts');
+
+		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
+
+		// Act
+		await sorter.sort();
+
+		// Assert
+		const touchedPaths = fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath);
+		// In root: beta.ts should appear before alpha.ts
+		expect(touchedPaths.indexOf('C:/repo/beta.ts')).toBeLessThan(touchedPaths.indexOf('C:/repo/alpha.ts'));
+		// In src: nested.ts and alpha.ts should appear before beta.ts
+		const srcIndex = touchedPaths.indexOf('C:/repo/src');
+		const nestedIndex = touchedPaths.indexOf('C:/repo/src/nested.ts');
+		const srcAplhaIndex = touchedPaths.indexOf('C:/repo/src/alpha.ts');
+		const srcBetaIndex = touchedPaths.indexOf('C:/repo/src/beta.ts');
+		expect(nestedIndex).toBeGreaterThan(srcIndex);
+		expect(srcAplhaIndex).toBeGreaterThan(nestedIndex);
+		expect(srcBetaIndex).toBeGreaterThan(srcAplhaIndex);
+	});
+
+	it('applies simple glob rules to match files in the same directory only', async () => {
+		// Arrange
+		workspaceState.directories.set('C:/repo', [
+			['.order', 1],
+			['main.ts', 1],
+			['feature.test.ts', 1],
+			['utils.test.ts', 1]
+		]);
+		workspaceState.orderFiles.set('C:/repo/.order', '*.test.ts\nmain.ts');
+
+		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
+		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
+
+		// Act
+		await sorter.sort();
+
+		// Assert
+		const touchedPaths = fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath);
+		// All .test.ts files should appear before main.ts
+		const mainIndex = touchedPaths.indexOf('C:/repo/main.ts');
+		const featureTestIndex = touchedPaths.indexOf('C:/repo/feature.test.ts');
+		const utilsTestIndex = touchedPaths.indexOf('C:/repo/utils.test.ts');
+		expect(featureTestIndex).toBeLessThan(mainIndex);
+		expect(utilsTestIndex).toBeLessThan(mainIndex);
+	});
+
 	it('reapplies files when only a trailing entry stays in the same position', async () => {
 		// Arrange
 		const getOrderRules = vi

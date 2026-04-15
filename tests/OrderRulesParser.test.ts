@@ -57,7 +57,23 @@ describe('OrderRulesParser', () => {
 		expect(result).toEqual([
 			{ line: 'src/app.ts', lineType: 'exact' },
 			{ line: '**/*.test.ts', lineType: 'glob' },
-			{ line: 'folder', lineType: 'exact' }
+			{ line: 'folder', lineType: 'simple' }
+		]);
+	});
+
+	it('detects simple filenames (no path separators)', async () => {
+		// Arrange
+		const { default: OrderRulesParser } = await import('../src/OrderRulesParser.ts');
+		vscodeMock.workspace.fs.readFile.mockResolvedValue(new TextEncoder().encode('index.ts\n*.test.ts\nREADME.md'));
+
+		// Act
+		const result = await OrderRulesParser.getOrderRules([], toDirectoryUri('C:/repo'), ['.order']);
+
+		// Assert
+		expect(result).toEqual([
+			{ line: 'index.ts', lineType: 'simple' },
+			{ line: '*.test.ts', lineType: 'glob' },
+			{ line: 'README.md', lineType: 'simple' }
 		]);
 	});
 
@@ -100,7 +116,7 @@ describe('OrderRulesParser', () => {
 
 		// Assert
 		expect(result).toEqual([
-			{ line: 'leading.ts', lineType: 'exact' },
+			{ line: 'leading.ts', lineType: 'simple' },
 			{ line: 'folder/./kept.ts', lineType: 'exact' }
 		]);
 	});
