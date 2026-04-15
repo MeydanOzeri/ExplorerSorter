@@ -8,6 +8,5 @@ explorer-sorter-*.vsix
 .serena
 .stryker-tmp
 
-
 TestProject/
 AGENTS.md

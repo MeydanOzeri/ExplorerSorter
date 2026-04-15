@@ -47,6 +47,10 @@ class WorkspaceSorter {
 		return currentEntryPath === orderLinePath;
 	};
 
+	#isSimpleEntryMatch = (entry: string, orderLine: string) => {
+		return minimatch(entry, orderLine, { dot: true });
+	};
+
 	#isGlobEntryMatch = (currentDirectory: Uri, entry: string, orderLine: string) => {
 		const currentEntryPath = Uri.joinPath(currentDirectory, entry).fsPath;
 		const workspaceRelativePath = currentEntryPath.slice(this.#workspaceFolder.uri.fsPath.length + 1).replaceAll('\\', '/');
@@ -63,7 +67,8 @@ class WorkspaceSorter {
 			for (const entry of lexicographicallyOrderedEntries) {
 				const isExactEntryMatch = orderRule.lineType === 'exact' && this.#isExactEntryMatch(currentDirectory, entry.name, orderRule.line);
 				const isGlobEntryMatch = orderRule.lineType === 'glob' && this.#isGlobEntryMatch(currentDirectory, entry.name, orderRule.line);
-				if (isExactEntryMatch || isGlobEntryMatch) {
+				const isSimpleEntryMatch = orderRule.lineType === 'simple' && this.#isSimpleEntryMatch(entry.name, orderRule.line);
+				if (isExactEntryMatch || isGlobEntryMatch || isSimpleEntryMatch) {
 					entriesWithAppliedRules.add(entry.name);
 				}
 			}
