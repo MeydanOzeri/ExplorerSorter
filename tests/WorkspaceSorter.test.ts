@@ -113,9 +113,9 @@ describe('WorkspaceSorter', () => {
 		expect(configurationSpies.get).toHaveBeenNthCalledWith(1, 'ignoredDirectories', []);
 		expect(configurationSpies.get).toHaveBeenNthCalledWith(2, 'extraIgnoredDirectories', []);
 		expect(touchedPaths).toEqual([
-			'C:/repo/src',
 			'C:/repo/.env.md',
 			'C:/repo/notes.md',
+			'C:/repo/src',
 			'C:/repo/.order',
 			'C:/repo/alpha.ts',
 			'C:/repo/zeta.ts',
@@ -123,13 +123,13 @@ describe('WorkspaceSorter', () => {
 			'C:/repo/src/omega.ts'
 		]);
 		expect(fsSpies.utimesSync.mock.calls[0]?.[1]).toEqual(new Date(10_000));
-		expect(fsSpies.utimesSync.mock.calls[1]?.[1]).toEqual(new Date(7_800));
-		expect(fsSpies.utimesSync.mock.calls[2]?.[1]).toEqual(new Date(6_700));
-		expect(fsSpies.utimesSync.mock.calls[3]?.[1]).toEqual(new Date(5_600));
-		expect(fsSpies.utimesSync.mock.calls[4]?.[1]).toEqual(new Date(4_500));
-		expect(fsSpies.utimesSync.mock.calls[5]?.[1]).toEqual(new Date(3_400));
-		expect(fsSpies.utimesSync.mock.calls[6]?.[1]).toEqual(new Date(18_900));
-		expect(fsSpies.utimesSync.mock.calls[7]?.[1]).toEqual(new Date(17_800));
+		expect(fsSpies.utimesSync.mock.calls[1]?.[1]).toEqual(new Date(8_900));
+		expect(fsSpies.utimesSync.mock.calls[2]?.[1]).toEqual(new Date(7_800));
+		expect(fsSpies.utimesSync.mock.calls[3]?.[1]).toEqual(new Date(6_700));
+		expect(fsSpies.utimesSync.mock.calls[4]?.[1]).toEqual(new Date(5_600));
+		expect(fsSpies.utimesSync.mock.calls[5]?.[1]).toEqual(new Date(4_500));
+		expect(fsSpies.utimesSync.mock.calls[6]?.[1]).toEqual(new Date(20_000));
+		expect(fsSpies.utimesSync.mock.calls[7]?.[1]).toEqual(new Date(18_900));
 	});
 
 	it('skips ignored directories during recursion', async () => {
@@ -201,7 +201,7 @@ describe('WorkspaceSorter', () => {
 		const { default: WorkspaceSorter } = await import('../src/WorkspaceSorter.ts');
 		const sorter = new WorkspaceSorter(toWorkspaceFolder('C:/repo'));
 		await sorter.sort();
-		fsSpies.statSync.mockReturnValueOnce({ mtime: new Date(8_900) });
+		fsSpies.statSync.mockReturnValueOnce({ mtime: new Date(10_000) });
 		expect(WorkspaceSorter.isSelfTriggeredMtimeChange(toUri('C:/repo/alpha.ts'))).toBe(true);
 		expect(fsSpies.statSync).toHaveBeenCalledWith('C:/repo/alpha.ts');
 	});
@@ -368,10 +368,10 @@ describe('WorkspaceSorter', () => {
 
 		// Assert
 		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
-			'C:/repo/src',
 			'C:/repo/.order',
 			'C:/repo/alpha.ts',
 			'C:/repo/beta.ts',
+			'C:/repo/src',
 			'C:/repo/src/.hidden.ts',
 			'C:/repo/src/.order',
 			'C:/repo/src/visible.ts'
@@ -402,7 +402,7 @@ describe('WorkspaceSorter', () => {
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/beta.ts', 'C:/repo/.order', 'C:/repo/alpha.ts']);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/beta.ts', 'C:/repo/.order', 'C:/repo/alpha.ts', 'C:/repo/folder']);
 	});
 
 	it('does not reuse file cache across sibling directories with the same file names', async () => {
@@ -514,7 +514,7 @@ describe('WorkspaceSorter', () => {
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/.order', 'C:/repo/src/beta.ts', 'C:/repo/src/alpha.ts']);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/.order', 'C:/repo/src', 'C:/repo/src/beta.ts', 'C:/repo/src/alpha.ts']);
 	});
 
 	it('reapplies files when same-length order changes after a shared prefix', async () => {
@@ -541,7 +541,13 @@ describe('WorkspaceSorter', () => {
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:/repo/.order', 'C:/repo/src/gamma.ts', 'C:/repo/src/alpha.ts', 'C:/repo/src/beta.ts']);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual([
+			'C:/repo/.order',
+			'C:/repo/src',
+			'C:/repo/src/gamma.ts',
+			'C:/repo/src/alpha.ts',
+			'C:/repo/src/beta.ts'
+		]);
 	});
 
 	it('does not touch missing order files for single-entry directories', async () => {
