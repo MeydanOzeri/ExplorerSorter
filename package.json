@@ -43,6 +43,21 @@
 		"onStartupFinished"
 	],
 	"contributes": {
+		"commands": [
+			{
+				"command": "explorerSorter.generateOrderFile",
+				"title": "Generate .order file"
+			}
+		],
+		"menus": {
+			"explorer/context": [
+				{
+					"command": "explorerSorter.generateOrderFile",
+					"group": "2_workspace",
+					"when": "explorerResourceIsFolder"
+				}
+			]
+		},
 		"configuration": {
 			"title": "ExplorerSorter",
 			"properties": {
