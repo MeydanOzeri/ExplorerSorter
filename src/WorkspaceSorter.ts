@@ -9,13 +9,15 @@ const MTIME_STEP = 1100; // Use >1s steps for reliable directory mtime ordering 
 
 class WorkspaceSorter {
 	static #cachedMtime = new Map<string, Date>();
-	static #orderedEntries = new Map<string, Array<{ name: string; isDirectory: boolean }>>();
+	static #orderedEntries = { directories: new Map<string, string[]>(), files: new Map<string, string[]>() };
+	static #orderedEntriesMixed = new Map<string, Array<{ name: string; isDirectory: boolean }>>();
 
 	#workspaceFolder: WorkspaceFolder;
 	#ignoredDirectories = new Set([
 		...workspace.getConfiguration('explorerSorter').get<string[]>('ignoredDirectories', []),
 		...workspace.getConfiguration('explorerSorter').get<string[]>('extraIgnoredDirectories', [])
 	]);
+	#keepFoldersBeforeFiles = true; // Default: folders before files (backward compatible)
 
 	static isSelfTriggeredMtimeChange = (uri: Uri) => {
 		const cachedMtime = WorkspaceSorter.#cachedMtime.get(uri.fsPath);
@@ -39,6 +41,8 @@ class WorkspaceSorter {
 
 	constructor(workspaceFolder: WorkspaceFolder) {
 		this.#workspaceFolder = workspaceFolder;
+		// Check config for ordering mode (default: true for backward compatibility)
+		this.#keepFoldersBeforeFiles = workspace.getConfiguration('explorerSorter', workspaceFolder).get<boolean>('keepFoldersBeforeFiles', true);
 	}
 
 	#isExactEntryMatch = (currentDirectory: Uri, entry: string, orderLine: string) => {
@@ -57,33 +61,80 @@ class WorkspaceSorter {
 		return minimatch(workspaceRelativePath, orderLine, { dot: true });
 	};
 
-	#getOrderedEntries = (currentDirectory: Uri, entries: Array<{ name: string; isDirectory: boolean }>, orderRules: OrderRule[]) => {
+	#getOrderedEntries = (currentDirectory: Uri, entries: string[], orderRules: OrderRule[]) => {
+		if (entries.length <= 1) {
+			return entries;
+		}
+		const entriesWithAppliedRules = new Set<string>();
+		const lexicographicallyOrderedEntries = entries.toSorted((entryA, entryB) => entryA.localeCompare(entryB));
+		for (const orderRule of orderRules) {
+			for (const entry of lexicographicallyOrderedEntries) {
+				const isExactEntryMatch = orderRule.lineType === 'exact' && this.#isExactEntryMatch(currentDirectory, entry, orderRule.line);
+				const isGlobEntryMatch = orderRule.lineType === 'glob' && this.#isGlobEntryMatch(currentDirectory, entry, orderRule.line);
+				const isSimpleEntryMatch = orderRule.lineType === 'simple' && this.#isSimpleEntryMatch(entry, orderRule.line);
+				if (isExactEntryMatch || isGlobEntryMatch || isSimpleEntryMatch) {
+					entriesWithAppliedRules.add(entry);
+				}
+			}
+		}
+		return [...entriesWithAppliedRules, ...lexicographicallyOrderedEntries.filter((entry) => !entriesWithAppliedRules.has(entry))];
+	};
+
+	#getOrderedEntriesMixed = (currentDirectory: Uri, entries: Array<{ name: string; isDirectory: boolean }>, orderRules: OrderRule[]) => {
 		if (entries.length <= 1) {
 			return entries;
 		}
 		const entriesWithAppliedRules = new Set<string>();
 		const lexicographicallyOrderedEntries = entries.toSorted((entryA, entryB) => entryA.name.localeCompare(entryB.name));
+		const orderedResult: Array<{ name: string; isDirectory: boolean }> = [];
+
+		// Process rules in order to maintain rule order
 		for (const orderRule of orderRules) {
 			for (const entry of lexicographicallyOrderedEntries) {
-				const isExactEntryMatch = orderRule.lineType === 'exact' && this.#isExactEntryMatch(currentDirectory, entry.name, orderRule.line);
-				const isGlobEntryMatch = orderRule.lineType === 'glob' && this.#isGlobEntryMatch(currentDirectory, entry.name, orderRule.line);
-				const isSimpleEntryMatch = orderRule.lineType === 'simple' && this.#isSimpleEntryMatch(entry.name, orderRule.line);
-				if (isExactEntryMatch || isGlobEntryMatch || isSimpleEntryMatch) {
-					entriesWithAppliedRules.add(entry.name);
+				if (!entriesWithAppliedRules.has(entry.name)) {
+					const isExactEntryMatch = orderRule.lineType === 'exact' && this.#isExactEntryMatch(currentDirectory, entry.name, orderRule.line);
+					const isGlobEntryMatch = orderRule.lineType === 'glob' && this.#isGlobEntryMatch(currentDirectory, entry.name, orderRule.line);
+					const isSimpleEntryMatch = orderRule.lineType === 'simple' && this.#isSimpleEntryMatch(entry.name, orderRule.line);
+					if (isExactEntryMatch || isGlobEntryMatch || isSimpleEntryMatch) {
+						entriesWithAppliedRules.add(entry.name);
+						orderedResult.push(entry);
+					}
 				}
 			}
 		}
-		const sortedEntries = lexicographicallyOrderedEntries.filter((entry) => entriesWithAppliedRules.has(entry.name));
-		const unorderedEntries = lexicographicallyOrderedEntries.filter((entry) => !entriesWithAppliedRules.has(entry.name));
-		return [...sortedEntries, ...unorderedEntries];
+
+		// Add remaining entries in lexical order
+		for (const entry of lexicographicallyOrderedEntries) {
+			if (!entriesWithAppliedRules.has(entry.name)) {
+				orderedResult.push(entry);
+			}
+		}
+
+		return orderedResult;
 	};
 
-	#areSameOrder = (orderA: Array<{ name: string; isDirectory: boolean }>, orderB: Array<{ name: string; isDirectory: boolean }>) =>
+	#areSameOrder = (orderA: string[], orderB: string[]) => orderA.length === orderB.length && orderA.every((entry, index) => entry === orderB[index]);
+
+	#areSameOrderMixed = (orderA: Array<{ name: string; isDirectory: boolean }>, orderB: Array<{ name: string; isDirectory: boolean }>) =>
 		orderA.length === orderB.length && orderA.every((entry, index) => entry.name === orderB[index].name && entry.isDirectory === orderB[index].isDirectory);
 
-	#applyOrderRules = (currentDirectory: Uri, orderedEntries: Array<{ name: string; isDirectory: boolean }>, baseTime: number) => {
-		const previousOrderedEntries = WorkspaceSorter.#orderedEntries.get(currentDirectory.fsPath);
+	#applyOrderRules = (entriesType: 'directories' | 'files', currentDirectory: Uri, orderedEntries: string[], baseTime: number) => {
+		const previousOrderedEntries = WorkspaceSorter.#orderedEntries[entriesType].get(currentDirectory.fsPath);
 		if (previousOrderedEntries && this.#areSameOrder(previousOrderedEntries, orderedEntries)) {
+			return;
+		}
+		for (let index = 0; index < orderedEntries.length; index++) {
+			const filePath = Uri.joinPath(currentDirectory, orderedEntries[index]).fsPath;
+			const mtime = new Date(baseTime - index * MTIME_STEP);
+			utimesSync(filePath, mtime, mtime);
+			WorkspaceSorter.#cachedMtime.set(filePath, mtime);
+		}
+		WorkspaceSorter.#orderedEntries[entriesType].set(currentDirectory.fsPath, orderedEntries);
+	};
+
+	#applyOrderRulesMixed = (currentDirectory: Uri, orderedEntries: Array<{ name: string; isDirectory: boolean }>, baseTime: number) => {
+		const previousOrderedEntries = WorkspaceSorter.#orderedEntriesMixed.get(currentDirectory.fsPath);
+		if (previousOrderedEntries && this.#areSameOrderMixed(previousOrderedEntries, orderedEntries)) {
 			return;
 		}
 		for (let index = 0; index < orderedEntries.length; index++) {
@@ -92,22 +143,31 @@ class WorkspaceSorter {
 			utimesSync(filePath, mtime, mtime);
 			WorkspaceSorter.#cachedMtime.set(filePath, mtime);
 		}
-		WorkspaceSorter.#orderedEntries.set(currentDirectory.fsPath, orderedEntries);
+		WorkspaceSorter.#orderedEntriesMixed.set(currentDirectory.fsPath, orderedEntries);
 	};
 
 	#sortDirectory = (currentDirectory: Uri, directoryEntries: { directories: string[]; files: string[] }, orderRules: OrderRule[]) => {
-		// Create combined list of all entries with their type information
-		const allEntries: Array<{ name: string; isDirectory: boolean }> = [
-			...directoryEntries.directories.map((name) => ({ name, isDirectory: true })),
-			...directoryEntries.files.map((name) => ({ name, isDirectory: false }))
-		];
+		if (this.#keepFoldersBeforeFiles) {
+			// Original mode: folders before files (backward compatible)
+			const orderedDirectories = this.#getOrderedEntries(currentDirectory, directoryEntries.directories, orderRules);
+			const directoriesBaseTime = Date.now();
+			this.#applyOrderRules('directories', currentDirectory, orderedDirectories, directoriesBaseTime);
 
-		// Apply ordering rules across all entries (respecting .order file priorities)
-		const orderedEntries = this.#getOrderedEntries(currentDirectory, allEntries, orderRules);
+			const orderedFiles = this.#getOrderedEntries(currentDirectory, directoryEntries.files, orderRules);
+			const filesBaseTime = directoriesBaseTime - (directoryEntries.directories.length + 1) * MTIME_STEP;
+			this.#applyOrderRules('files', currentDirectory, orderedFiles, filesBaseTime);
+		} else {
+			// New mode: mixed file/folder ordering - preserve original filesystem order
+			// Merge directories and files back together, then apply ordering rules to the combined list
+			const mergedEntries = [
+				...directoryEntries.directories.map((name) => ({ name, isDirectory: true })),
+				...directoryEntries.files.map((name) => ({ name, isDirectory: false }))
+			].toSorted((a, b) => a.name.localeCompare(b.name));
 
-		// Assign mtimes based on combined order
-		const baseTime = Date.now();
-		this.#applyOrderRules(currentDirectory, orderedEntries, baseTime);
+			const orderedEntries = this.#getOrderedEntriesMixed(currentDirectory, mergedEntries, orderRules);
+			const baseTime = Date.now();
+			this.#applyOrderRulesMixed(currentDirectory, orderedEntries, baseTime);
+		}
 	};
 
 	#getDirectoryEntries = async (currentDirectory: Uri) => {
