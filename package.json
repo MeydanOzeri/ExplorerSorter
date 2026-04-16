@@ -43,6 +43,21 @@
 		"onStartupFinished"
 	],
 	"contributes": {
+		"commands": [
+			{
+				"command": "explorerSorter.generateOrderFile",
+				"title": "Generate .order file"
+			}
+		],
+		"menus": {
+			"explorer/context": [
+				{
+					"command": "explorerSorter.generateOrderFile",
+					"group": "2_workspace",
+					"when": "explorerResourceIsFolder"
+				}
+			]
+		},
 		"configuration": {
 			"title": "ExplorerSorter",
 			"properties": {
@@ -77,6 +92,11 @@
 					},
 					"default": [],
 					"description": "Additional directory names to append to the built-in default ignore list without replacing it."
+				},
+				"explorerSorter.keepFoldersBeforeFiles": {
+					"type": "boolean",
+					"default": true,
+					"description": "When enabled (default), folders are always displayed before files. When disabled, files and folders are ordered according to the .order file."
 				}
 			}
 		},

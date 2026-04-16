@@ -1,6 +1,19 @@
-import { type ExtensionContext, type WorkspaceFolder, type FileSystemWatcher, Uri, OutputChannel, workspace, window, Disposable, ExtensionMode, RelativePattern } from 'vscode';
+import {
+	type ExtensionContext,
+	type WorkspaceFolder,
+	type FileSystemWatcher,
+	Uri,
+	OutputChannel,
+	workspace,
+	window,
+	commands,
+	Disposable,
+	ExtensionMode,
+	RelativePattern
+} from 'vscode';
 import WorkspaceSorter from './WorkspaceSorter.ts';
 import path from 'path';
+import { promises as fs } from 'fs';
 
 const isIgnoredPath = (workspaceFolder: WorkspaceFolder, changedPath: Uri) => {
 	if (changedPath.fsPath === workspaceFolder.uri.fsPath) {
@@ -57,6 +70,64 @@ const triggerWorkspaceSort = async (
 	}
 };
 
+const generateOrderFile = async (folderUri: Uri | undefined, outputChannel: OutputChannel) => {
+	if (!folderUri) {
+		window.showErrorMessage('Please select a folder to generate the .order file.');
+		return;
+	}
+
+	try {
+		const folderPath = folderUri.fsPath;
+		const orderFilePath = path.join(folderPath, '.order');
+
+		// Check if .order file already exists
+		try {
+			await fs.access(orderFilePath);
+			const overwrite = await window.showWarningMessage('.order file already exists. Do you want to overwrite it?', { modal: true }, 'Yes', 'No');
+			if (overwrite !== 'Yes') {
+				return;
+			}
+		} catch {
+			// File doesn't exist, which is fine
+		}
+
+		// Read folder contents
+		const entries = await fs.readdir(folderPath, { withFileTypes: true });
+
+		// Separate folders and files, sort each group alphabetically
+		const folders = entries
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => entry.name)
+			.sort((a, b) => a.localeCompare(b));
+
+		const files = entries
+			.filter((entry) => !entry.isDirectory())
+			.map((entry) => entry.name)
+			.sort((a, b) => a.localeCompare(b));
+
+		// Combine: folders first, then files
+		const allEntries = [...folders, ...files];
+
+		// Generate .order file content
+		const orderContent = allEntries.join('\n') + (allEntries.length > 0 ? '\n' : '');
+
+		// Write .order file
+		await fs.writeFile(orderFilePath, orderContent, 'utf8');
+
+		outputChannel.appendLine(`Generated .order file at ${orderFilePath}`);
+
+		// Open the .order file for editing
+		const document = await workspace.openTextDocument(orderFilePath);
+		await window.showTextDocument(document);
+
+		window.showInformationMessage('.order file generated successfully!');
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		outputChannel.appendLine(`generateOrderFile failed: ${errorMessage}`);
+		window.showErrorMessage(`Failed to generate .order file: ${errorMessage}`);
+	}
+};
+
 const activate = async (context: ExtensionContext) => {
 	const runningWorkspaceSorts = new Set<string>();
 	const queuedWorkspaceSorts = new Set<string>();
@@ -75,6 +146,7 @@ const activate = async (context: ExtensionContext) => {
 		workspaceWatchers.push(workspaceWatcher);
 	}
 	context.subscriptions.push(
+		commands.registerCommand('explorerSorter.generateOrderFile', (folderUri: Uri | undefined) => generateOrderFile(folderUri, outputChannel)),
 		workspace.onDidChangeConfiguration((configurationChangeEvent) => {
 			for (const workspaceFolder of workspace.workspaceFolders ?? []) {
 				const isIgnoredDirectoriesAffected = configurationChangeEvent.affectsConfiguration('explorerSorter.ignoredDirectories', workspaceFolder);
