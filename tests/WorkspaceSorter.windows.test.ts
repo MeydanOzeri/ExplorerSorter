@@ -75,7 +75,7 @@ describe('WorkspaceSorter windows paths', () => {
 		await sorter.sort();
 
 		// Assert
-		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:\\repo\\.order', 'C:\\repo\\src', 'C:\\repo\\src\\beta.ts', 'C:\\repo\\src\\alpha.ts']);
+		expect(fsSpies.utimesSync.mock.calls.map(([filePath]) => filePath)).toEqual(['C:\\repo\\src', 'C:\\repo\\.order', 'C:\\repo\\src\\beta.ts', 'C:\\repo\\src\\alpha.ts']);
 	});
 
 	it('does not match glob rules against absolute windows paths', async () => {
